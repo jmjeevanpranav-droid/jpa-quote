@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: starter
     region: singapore # Closest low-latency region to India
-    buildCommand: npm install && npm run seed && npm run build
+    buildCommand: npm install --include=dev && npm run seed && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -15,3 +15,4 @@ services:
       name: jpa-sqlite-disk
       mountPath: /var/data
       sizeGB: 1
+
