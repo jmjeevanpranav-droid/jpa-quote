@@ -23,7 +23,7 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Set up persistent database directory
-RUN mkdir -p /var/data && chown -R nextjs:nodejs /var/data
+RUN mkdir -p /var/data && chmod 777 /var/data
 ENV JPA_DATA_DIR=/var/data
 
 COPY --from=builder /app/public ./public
@@ -32,10 +32,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/scripts ./scripts
 
-USER nextjs
-
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["npm", "start"]
+CMD ["sh", "-c", "mkdir -p /var/data && chmod 777 /var/data && npm start"]
+
