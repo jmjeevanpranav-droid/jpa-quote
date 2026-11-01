@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: jpa-quote-builder
+    runtime: node
+    plan: starter
+    region: singapore # Closest low-latency region to India
+    buildCommand: npm install && npm run seed && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JPA_DATA_DIR
+        value: /var/data
+    disk:
+      name: jpa-sqlite-disk
+      mountPath: /var/data
+      sizeGB: 1
