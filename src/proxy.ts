@@ -7,21 +7,22 @@ export async function proxy(req: NextRequest) {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && origin) {
     let isSameOrigin = false;
     try {
-      const originHost = new URL(origin).host;
-      const forwardedHost = req.headers.get('x-forwarded-host');
-      const host = req.headers.get('host');
-      const nextHost = req.nextUrl.host;
+      const originHostname = new URL(origin).hostname.toLowerCase();
+      const forwardedHost = req.headers.get('x-forwarded-host')?.split(':')[0].toLowerCase();
+      const host = req.headers.get('host')?.split(':')[0].toLowerCase();
+      const nextHost = req.nextUrl.hostname.toLowerCase();
 
       if (
         origin === req.nextUrl.origin ||
-        (forwardedHost && originHost === forwardedHost) ||
-        (host && originHost === host) ||
-        (nextHost && originHost === nextHost) ||
-        originHost.endsWith('.fly.dev') ||
-        originHost === 'jpavistara.online' ||
-        originHost === 'www.jpavistara.online' ||
-        originHost === 'localhost' ||
-        originHost.startsWith('localhost:')
+        (forwardedHost && originHostname === forwardedHost) ||
+        (host && originHostname === host) ||
+        (nextHost && originHostname === nextHost) ||
+        originHostname.endsWith('.fly.dev') ||
+        originHostname.endsWith('.vercel.app') ||
+        originHostname === 'jpavistara.online' ||
+        originHostname.endsWith('.jpavistara.online') ||
+        originHostname === 'localhost' ||
+        originHostname === '127.0.0.1'
       ) {
         isSameOrigin = true;
       }
