@@ -4,8 +4,34 @@ import { verifySessionToken, SESSION_COOKIE_NAME } from './lib/auth/tokens';
 export async function proxy(req: NextRequest) {
   // 1. Strict Cross-Origin Request Forgery (CSRF) & Origin Defense
   const origin = req.headers.get('origin');
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && origin && origin !== req.nextUrl.origin) {
-    return NextResponse.json({ error: 'Cross-origin requests are strictly prohibited' }, { status: 403 });
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && origin) {
+    let isSameOrigin = false;
+    try {
+      const originHost = new URL(origin).host;
+      const forwardedHost = req.headers.get('x-forwarded-host');
+      const host = req.headers.get('host');
+      const nextHost = req.nextUrl.host;
+
+      if (
+        origin === req.nextUrl.origin ||
+        (forwardedHost && originHost === forwardedHost) ||
+        (host && originHost === host) ||
+        (nextHost && originHost === nextHost) ||
+        originHost.endsWith('.fly.dev') ||
+        originHost === 'jpavistara.online' ||
+        originHost === 'www.jpavistara.online' ||
+        originHost === 'localhost' ||
+        originHost.startsWith('localhost:')
+      ) {
+        isSameOrigin = true;
+      }
+    } catch {
+      isSameOrigin = false;
+    }
+
+    if (!isSameOrigin) {
+      return NextResponse.json({ error: 'Cross-origin requests are strictly prohibited' }, { status: 403 });
+    }
   }
 
   const { pathname } = req.nextUrl;
