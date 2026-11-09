@@ -5,4 +5,12 @@ node_modules
 data/*.db*
 coverage
 .repair-backups
+DeepSeek-OCR
+.paddlex
+uploads
+tests
+*.md
+.vscode
+claude-code
+
 

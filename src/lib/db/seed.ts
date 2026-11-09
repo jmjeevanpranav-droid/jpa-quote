@@ -1,9 +1,14 @@
-import { getDb } from './client';
-import { initDb } from './schema';
+import { getDb, getDbKey } from './client';
+import { initDb, resetSchemaCache } from './schema';
 import { normalizeItemText } from '../catalog/rate-memory';
 import bcrypt from 'bcryptjs';
 
+const seedPromises = new Map<string, Promise<void>>();
+
 export async function resetAndSeedDb() {
+  const key = getDbKey();
+  seedPromises.delete(key);
+  resetSchemaCache();
   await initDb();
   const db = getDb();
 
@@ -24,20 +29,34 @@ export async function resetAndSeedDb() {
 }
 
 export async function seedDb() {
+  const key = getDbKey();
+  const existing = seedPromises.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = runSeedDb().catch((err) => {
+    seedPromises.delete(key);
+    throw err;
+  });
+  seedPromises.set(key, promise);
+  return promise;
+}
+
+async function runSeedDb() {
   await initDb();
   const db = getDb();
 
   // 1. Ensure N Jayakumar is seeded/updated as Master Administrator
-  const adminHash = await bcrypt.hash('jpa@1977', 10);
-  const staffHash = await bcrypt.hash('staff123', 10);
   const now = new Date().toISOString();
 
   const adminCheck = await db.execute({
-    sql: 'SELECT id FROM users WHERE email = ? LIMIT 1',
+    sql: 'SELECT id, name, role, password_hash FROM users WHERE email = ? LIMIT 1',
     args: ['jeevanpranavagencies@gmail.com'],
   });
 
   if (adminCheck.rows.length === 0) {
+    const adminHash = await bcrypt.hash('jpa@1977', 10);
     // Check if usr_admin_1 exists with old email, update it
     const oldAdminCheck = await db.execute({
       sql: 'SELECT id FROM users WHERE id = ? LIMIT 1',
@@ -56,16 +75,61 @@ export async function seedDb() {
       });
     }
   } else {
-    await db.execute({
-      sql: `UPDATE users SET name = 'N Jayakumar', role = 'admin', password_hash = ? WHERE email = 'jeevanpranavagencies@gmail.com'`,
-      args: [adminHash],
-    });
+    const row = adminCheck.rows[0];
+    if (row.name !== 'N Jayakumar' || row.role !== 'admin' || !row.password_hash) {
+      const adminHash = await bcrypt.hash('jpa@1977', 10);
+      await db.execute({
+        sql: `UPDATE users SET name = 'N Jayakumar', role = 'admin', password_hash = ? WHERE email = 'jeevanpranavagencies@gmail.com'`,
+        args: [adminHash],
+      });
+    }
   }
 
   // Permanently delete any legacy "JPA Sales & Admin Team" / salesteamjpa@gmail.com records
   await db.execute({
     sql: "DELETE FROM users WHERE email = 'salesteamjpa@gmail.com' OR name = 'JPA Sales & Admin Team'",
   });
+
+  const isTestEnv =
+    process.env.NODE_ENV === 'test' ||
+    Boolean(
+      process.env.JPA_DATA_DIR &&
+        (process.env.JPA_DATA_DIR.includes('jpa-test') || process.env.JPA_DATA_DIR.includes('-test-'))
+    ) ||
+    process.env.JPA_SEED_SAMPLE_QUOTE === 'true';
+
+  if (!isTestEnv) {
+    // Always purge any test-polluted PZ-02 / test_cust_* rows
+    await db.execute({
+      sql: "DELETE FROM customer_stores WHERE store_code = 'PZ-02' OR customer_id IN (SELECT id FROM customers WHERE store_code = 'PZ-02' OR id LIKE 'test_cust_%')",
+    });
+    await db.execute({
+      sql: "DELETE FROM customers WHERE store_code = 'PZ-02' OR id LIKE 'test_cust_%'",
+    });
+    await db.execute({
+      sql: "UPDATE company_profiles SET email = 'jeevanpranavagencies@gmail.com' WHERE email LIKE '%jmjp77@gmail.com%'",
+    });
+
+    // Clean production deployment reset (0 Quotations, 0 ₹, 0 Folders, NO existing emails — ONLY Admin email)
+    const cleanCheck = await db.execute({
+      sql: "SELECT value FROM system_settings WHERE key = 'fly_clean_deploy_v2' LIMIT 1",
+    });
+    if (cleanCheck.rows.length === 0) {
+      await db.execute('DELETE FROM quotation_items');
+      await db.execute('DELETE FROM quotation_sections');
+      await db.execute('DELETE FROM quotations');
+      await db.execute('DELETE FROM company_folders');
+      await db.execute('UPDATE customers SET folder_name = NULL, email = NULL');
+      await db.execute({
+        sql: "DELETE FROM users WHERE LOWER(email) != 'jeevanpranavagencies@gmail.com'",
+      });
+      await db.execute('DELETE FROM audit_events');
+      await db.execute({
+        sql: "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('fly_clean_deploy_v2', '1', ?)",
+        args: [now],
+      });
+    }
+  }
 
   // Check if company profile is already seeded
   const existingProfiles = await db.execute('SELECT COUNT(*) as count FROM company_profiles');
@@ -87,7 +151,7 @@ export async function seedDb() {
       '33BRGPM1867B1Z1',
       '16-P, Sakthi illam, Gandhi nagar, Mettuthottam, Podanur, Coimbatore-641023.',
       '9790600971',
-      'jeevanpranavagencies@gmail.com / jmjp77@gmail.com',
+      'jeevanpranavagencies@gmail.com',
       'https://www.jeevanpranavagencies.com/',
       'HDFC Bank Ltd',
       '50200034981273',
@@ -118,7 +182,7 @@ export async function seedDb() {
       '13/1A, EGATTUR, OMR, CHENNAI - 603103.',
       'PRASANTH P, HOME CENTRE, LANDMARK GROUP',
       '9790600971',
-      'procurement.marina@landmarkgroup.in',
+      '',
       '33',
       'Marina Mall Store - Prime Retail Client',
       now,
@@ -216,11 +280,6 @@ export async function seedDb() {
   }
 
   // 5. Seed Historical Quotation: JPA-74 (Only in automated test environments)
-  const isTestEnv =
-    process.env.NODE_ENV === 'test' ||
-    Boolean(process.env.JPA_DATA_DIR && process.env.JPA_DATA_DIR.includes('jpa-test')) ||
-    process.env.JPA_SEED_SAMPLE_QUOTE === 'true';
-
   if (!isTestEnv) {
     return;
   }

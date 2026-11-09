@@ -52,6 +52,8 @@ export function CustomerSearchSelect({
   className = '',
 }: CustomerSearchSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [shouldRender, setShouldRender] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [mounted, setMounted] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
@@ -96,29 +98,61 @@ export function CustomerSearchSelect({
     }
   }, [selectedCustomer, isOpen]);
 
-  // Position calculation for dropdown
+  // Position calculation for dropdown (clamped for mobile & desktop viewports)
   const updatePosition = useCallback(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || typeof window === 'undefined') return;
     const rect = containerRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const clampedWidth = Math.min(Math.max(rect.width, 300), vw - 20);
+    const clampedLeft = Math.max(10, Math.min(rect.left, vw - clampedWidth - 10));
     setDropdownCoords({
       top: rect.bottom + 6,
-      left: rect.left,
-      width: Math.max(rect.width, 340),
+      left: clampedLeft,
+      width: clampedWidth,
     });
   }, []);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let raf1: number | null = null;
+    let raf2: number | null = null;
+
     if (isOpen) {
       updatePosition();
-      const onResizeScroll = () => updatePosition();
-      window.addEventListener('resize', onResizeScroll);
-      window.addEventListener('scroll', onResizeScroll, true);
-      return () => {
-        window.removeEventListener('resize', onResizeScroll);
-        window.removeEventListener('scroll', onResizeScroll, true);
-      };
+      setShouldRender(true);
+      raf1 = requestAnimationFrame(() => {
+        updatePosition();
+        raf2 = requestAnimationFrame(() => {
+          setIsVisible(true);
+        });
+      });
+    } else {
+      setIsVisible(false);
+      timer = setTimeout(() => setShouldRender(false), 150);
     }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (raf1 !== null) cancelAnimationFrame(raf1);
+      if (raf2 !== null) cancelAnimationFrame(raf2);
+    };
   }, [isOpen, updatePosition]);
+
+  useEffect(() => {
+    if (!shouldRender) return;
+    let rafId: number | null = null;
+    const onResizeScroll = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updatePosition);
+    };
+    window.addEventListener('resize', onResizeScroll, { passive: true });
+    window.addEventListener('scroll', onResizeScroll, true);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', onResizeScroll);
+      window.removeEventListener('scroll', onResizeScroll, true);
+    };
+  }, [shouldRender, updatePosition]);
 
   // Click outside to close
   useEffect(() => {
@@ -326,15 +360,21 @@ export function CustomerSearchSelect({
     <div
       ref={menuRef}
       role="listbox"
+      data-state={isVisible ? 'open' : 'closed'}
       style={{
         position: 'fixed',
         top: `${dropdownCoords.top}px`,
         left: `${dropdownCoords.left}px`,
         width: `${dropdownCoords.width}px`,
-        maxHeight: '380px',
+        maxWidth: 'calc(100vw - 20px)',
+        maxHeight: 'min(380px, 65dvh)',
         zIndex: 99999,
       }}
-      className="rounded-2xl border border-white/80 bg-white/95 backdrop-blur-2xl shadow-[0_20px_50px_rgba(30,58,138,0.22)] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+      className={`glass-select-menu glass-dropdown-motion origin-top rounded-2xl overflow-hidden flex flex-col ${
+        isVisible
+          ? 'opacity-100 scale-100 translate-y-0'
+          : 'opacity-0 scale-[0.96] -translate-y-1.5 pointer-events-none'
+      }`}
     >
       {/* Top Glassmorphism Status Bar */}
       <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/70 backdrop-blur-md flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none">
@@ -567,7 +607,7 @@ export function CustomerSearchSelect({
       </div>
 
       {/* Render Dropdown via React Portal */}
-      {isOpen && mounted && typeof document !== 'undefined'
+      {shouldRender && mounted && typeof document !== 'undefined'
         ? createPortal(dropdownMenu, document.body)
         : null}
 

@@ -1,250 +1,98 @@
-# JPA Quote Builder Specification & Implementation Record
+# JPA Quote Builder — improve English handwriting recognition and quotation import
 
-Updates for **JPA Quote Builder → Customers → Registered Client Accounts**, Rate Memory, Quotations, and Excel Export. Applied to **all companies and customer groups** across Tamil Nadu and pan-India operations.
+## Goal
 
----
+Improve the existing quotation import feature in JPA Quote Builder. An employee should be able to upload a handwritten list, phone photo, scanned PDF, digital PDF, Word document, or Excel workbook and receive an editable quotation preview. The assistant should recover the writer’s intended items, produce clear English descriptions, and put each supported value into the correct field. It must handle documents with missing headings, irregular spacing, or no table at all.
 
-### Priority 1: Automatically Reuse Previous Rates (Completed)
-- **Automatic Matching**: When creating a new quotation and adding or importing items (via manual input, Excel, PDF, or multimodal OCR image), automatically fills each matching item’s latest saved rate for the selected company or customer group.
-- **Group & Branch Sharing**: Branches belonging to the same group (e.g. Lifestyle Homecentre, Madurai, Prozone Mall) share that customer group’s saved rates.
-- **Tenant Isolation**: Unrelated companies and corporate accounts remain strictly isolated with zero cross-tenant rate leakage.
-- **Summary Recalculation**: Preserves current quotation quantities while recalculating GST-exclusive/inclusive subtotals, intra-state CGST/SGST (or IGST), and rounded totals deterministically.
+The current preview reports “44 lines found.” Several visible lines contain fragments of letters, pipes, and dashes. They are marked “Needs review,” but the same garbled strings still appear in Particulars as if they were proposed product names. Improve both **how the document is read** and **what the employee sees when a reading is uncertain**.
 
----
+## 1. Use the existing project and tools
 
-### Priority 2: Save Rates for New Items (Completed)
-- **Rate Memory Learning**: When an item has no previous rate in the system, its rate is left open for manual entry.
-- **Automatic Persistence**: Once the quotation is saved, the rate is remembered in JPA Central Rate Memory and automatically reused for subsequent quotations for that client.
-- **Intentional Price Updates**: Allows verified rate updates and logs them to rate history without altering historical quotations.
-- **Immutable History**: Historical quotations retain their exact original rates and calculations.
+Claude Code is installed globally. Use the available Claude Code integration or relevant configured Claude skill as a development aid if Antigravity can access it. Check the project’s existing instructions and configuration before assuming a particular skill exists. If there is no configured Claude skill, continue the source changes directly in Antigravity.
 
----
+Keep DeepSeek-OCR as the application’s existing recognizer and use the already-installed Fuse.js for catalogue matching. Claude Code is for development. Do not add a Claude API dependency, require employees to have a Claude subscription, or send their uploads to a new external provider. Do not introduce Tesseract, PaddleOCR, MinerU, or EasyOCR. Reuse the project’s existing document readers where they support the input.
 
-### Priority 3: Accurate Item Matching & Clean OCR (Completed)
-- **Multi-attribute Normalization**: Matches product descriptions, specifications, units (kgs, nos, packs, pcs, lts, reams, rims, box, qty), and pack sizes before reusing a rate.
-- **Uncertainty Flagging**: Flags ambiguous matches for user confirmation instead of guessing.
-- **Non-destructive Overwrite Prevention**: Never overwrites rates manually edited in the active quotation.
-- **Clean UI**: Uncluttered Document Import interface without unwanted engine labels or debug text.
+**Execution boundary:** Read and edit source files only. Do not open a browser, start or restart the application, install packages, invoke OCR models on documents, run builds, execute tests, deploy, or change the live database. I will run the application and tests myself from my terminal. You may write regression tests and prepare manual checks. At the end, give me the commands you verified from the project configuration without running them.
 
----
+## 2. Find where the text first becomes garbled
 
-### Priority 4: Search Bar & Dual View Modes (Completed)
-- **Unified Search Bar**: Fast, debounced search within **Registered Client Accounts** filtering by Company Name, Store Code, Store/Trade Name, GSTIN, Address, Contact Person, and Phone.
-- **Case-Insensitive & Partial Matching**: Instant client lookup with clear button (`X`) and empty state messaging.
-- **Dual View Modes**:
-  - **Editable Table** (default active view for fast spreadsheet-style management)
-  - **Card Grid** (visual card layout with direct Quote links and phone details)
-- **Responsive Layout**: Clean desktop and mobile layouts with accessible touch targets.
+Trace the actual employee workflow from file selection through upload, file decoding, page rendering, OCR, line parsing, catalogue matching, preview, and insertion. Start with the code behind **Process & Extract Line Items** and **Accept & Insert into Quotation**. Follow the real request rather than assuming a handwriting test exercises the same path.
 
----
+Inspect these specific possibilities:
 
-### Priority 5: Editable Customers Page with Microsecond-Fast Auto-Save (Completed)
-- **Directly Editable Spreadsheet Grid**: Every customer field is directly editable inline:
-  - `No.` (Row Index)
-  - `Client / Company Legal Name` (required)
-  - **`Store Code (Optional)`** (Header strictly titled `Store Code (Optional)`)
-  - `Store / Trade Name`
-  - `GSTIN` (auto-uppercased font-mono)
-  - `Billing Address`
-  - `Contact Person`
-  - `Phone`
-  - `Actions` (`Quote` generator link + `Delete` record)
-- **Microsecond Saving Performance**:
-  - **0ms Optimistic UI**: Changes render instantaneously with zero input lag.
-  - **Non-blocking Background Sync**: Automatically dispatches `PUT /api/customers` on keystroke debounce (350ms) and on blur.
-  - **Performance Telemetry**: Displays real-time save timing badge (e.g., `⚡ Auto-saved in 0.8ms`).
-  - **Visual Confirmation**: Green checkmark badges on saved rows.
-- **Quick Inline Add Row**: Dedicated `+` bottom row in the table allowing instant customer creation without leaving the spreadsheet.
-- **Add Customer Modal**: Includes the optional `Store Code (Optional)` field with real-time validation.
+- A PDF has a damaged or badly encoded text layer. The application accepts it because it contains characters, even though the rendered page may be readable.
+- The file is rendered at a resolution that loses small handwritten letters, decimal points, or distinctions such as `1`, `I`, and `l`.
+- OCR produces usable words and cells, but a later parser flattens table markup, borders, separators, or empty cells into fabricated item lines.
+- The original reading and the proposed English description are populated from the same raw string, even after a row has been classified as uncertain.
+- An existing test sends a typed `handwrittenNoteText` string directly to the import endpoint. Keep that parser coverage, but distinguish it from a test that starts with actual image bytes.
 
----
+Identify which explanations the source supports. If a cause requires a real document or runtime observation to confirm, label it as unverified. Do not claim to have reproduced the screenshot.
 
-### Priority 6: Dedicated Store Code Column in Excel Export (Completed)
-- **Separate Column B ("Store Code")**:
-  - Store Code has its own **dedicated separate column** placed immediately next to `No.` (Column A).
-  - Column A: `No.`
-  - **Column B: `Store Code`** (e.g., `1903`, `PZ-01`, `HC-10`, center-aligned)
-  - Column C: `Store name` (clean store/branch name, e.g., `Lifestyle International | Prozone Mall`, without code duplication)
-  - Column D: `Particulars` (Item description)
-  - Column E: `Specifications`
-  - Column F: `Pack`
-  - Column G: `Qty.`
-  - Column H: `Unit`
-  - Column I: `Unit price ₹`
-  - Column J: `GST %`
-  - Column K: `Amount ₹`
-  - Hidden Column L: Line item GST calculation formula
-- **Clean Store Name Isolation**:
-  - Automatically filters and isolates store codes from the `Store name` text to guarantee zero duplicate code strings.
-- **Quotation Header Details (Row 14)**:
-  - Displays `Store Location: <Location>  |  Store Code: <Code>`.
-- **Accurate Mathematical Formulas**:
-  - Line amount (`=ROUND(G24*I24,2)` or tax-inclusive `=ROUND(G24*I24/(1+J24),2)`).
-  - Summary rows (`SUM(K24:K25)`, `SUMIF(J24:J25, 18/100, L24:L25)`, `SUM(K...)`) calculate seamlessly with verified formula integrity.
+## 3. Read each file in the way that preserves its information
 
----
+**For Excel**, use cells, row positions, merged ranges, and worksheet boundaries. A blank Brand cell must remain blank. The next cell must retain its own column position. Preserve item codes with leading zeros.
 
-### Priority 7: Dedicated Responsive Store Code & Store / Branch Columns in PDF Generator (Completed)
-- **Dedicated Columns for Store Code & Store / Branch**:
-  - Automatically detects the presence of `storeCode` or `storeName` across quotation customer data or line items.
-  - Dynamically renders **`Store Code`** (Col 2) and **`Store / Branch`** (Col 3) directly in the PDF table.
-- **Dynamic Portrait A4 Responsive Layout (186 mm Content Width)**:
-  - Standard Portrait A4 width is 210 mm with 12 mm margins, leaving exactly 186 mm printable width.
-  - Dynamically allocates calibrated column widths across 4 distinct layouts without overflow or clipping:
-    1. **Both Store Code & Store / Branch Present (10 Columns = 186 mm)**:
-       - `#` (7 mm, center)
-       - `Store Code` (16 mm, bold center)
-       - `Store / Branch` (24 mm, left linebreak)
-       - `Particulars` (45 mm, bold left)
-       - `Specification` (22 mm, left)
-       - `Qty` (10 mm, center)
-       - `Unit` (11 mm, center)
-       - `Unit Price (Rs.)` (19 mm, right)
-       - `GST %` (12 mm, center)
-       - `Amount (Rs.)` (20 mm, bold navy right)
-    2. **Store Code Only (9 Columns = 186 mm)**:
-       - `#` (8 mm), `Store Code` (20 mm), `Particulars` (58 mm), `Specification` (28 mm), `Qty` (11 mm), `Unit` (11 mm), `Unit Price` (21 mm), `GST %` (13 mm), `Amount` (18 mm).
-    3. **Store / Branch Only (9 Columns = 186 mm)**:
-       - `#` (8 mm), `Store / Branch` (28 mm), `Particulars` (51 mm), `Specification` (26 mm), `Qty` (11 mm), `Unit` (11 mm), `Unit Price` (21 mm), `GST %` (13 mm), `Amount` (17 mm).
-    4. **Neither Present (8 Columns = 186 mm)**:
-       - `#` (9 mm), `Particulars` (67 mm), `Specification` (32 mm), `Qty` (12 mm), `Unit` (12 mm), `Unit Price` (23 mm), `GST %` (13 mm), `Amount` (18 mm).
-- **Clean Store Name Isolation**:
-  - `getCleanStoreName` strips redundant embedded store codes so they do not duplicate in `Store / Branch`.
-- **Client Metadata Card**:
-  - Displays `Store Code: <Code>` and `Store / Branch: <Store>` alongside `GSTIN` and contact details with responsive vertical accent branding in JPA Orange (#EA580C).
+**For Word and digital PDFs**, preserve tables, paragraphs, and reading order. A long description can wrap onto a second line while its quantity appears only once. Check whether the text actually covers the item region. A readable page title is insufficient evidence that the product list below it was extracted correctly.
 
----
+**For photos and scanned PDFs**, pass the actual decoded image or rendered page to DeepSeek-OCR. Preserve the original page and its orientation. Where the source contains enough detail, use a bounded second reading of a difficult region. Include the nearby description and quantity so the recognizer retains context. Keep the better-supported reading. Stop when further processing cannot resolve the marks.
 
-### Priority 8: Customer Search Combobox & Modern Nurture Glassmorphism Pop-up (Completed)
-- **Searchable Customer Combobox (Live Search Bar)**:
-  - When typing a firm, company name, branch location, store code, or GSTIN in the "Select Customer" input, matching records filter in real-time.
-  - Matches display with Company Legal Name, Store Code badge (e.g. `1903`), Branch / Trade Name, and GSTIN.
-  - Selecting any customer auto-fills:
-    - `Customer Company Name`
-    - `Store / Branch Location` (`storeName`)
-    - `Store Code` (`storeCode`)
-    - `Customer Address` (`customerAddress`)
-    - `Customer GSTIN` (`customerGstin`)
-- **"Create" Option for Unlisted Firms & Modal Pop-up**:
-  - If a typed firm is not found, an attractive action button appears: **`+ Create "<typed firm>"`**.
-  - A permanent bottom button **`+ Create New Customer`** allows customer registration at any time.
-  - Clicking either opens a **Modern Nurture Glassmorphism Pop-up**:
-    - Translucent frosted glass effect (`bg-white/95 backdrop-blur-2xl border border-white/80 shadow-[0_24px_50px_rgba(30,58,138,0.18)]`).
-    - Nurture gradient header badge with nature-infused corporate accents.
-    - Fields identical to Customers page:
-      - `Company Legal Name *` (pre-filled with the search query)
-      - `Store Code (Optional)` (amber background badge & uppercase mono font)
-      - `Store / Branch Location`
-      - `Customer GSTIN`
-      - `Billing Address *`
-      - `Contact Person` & `Phone`
-      - `Email Address (Optional)`
-    - On submit, dispatches `POST /api/customers`, updates the local customer list, selects the customer, and immediately auto-fills GSTIN, Address, Branch, and Store Code into the quotation.
-- **Quotation Date & Validity Date Automation**:
-  - **Quotation Date**: Defaults to Current / Present Date (`YYYY-MM-DD`).
-  - **Validity Date**: Defaults to **+15 Days from Current/Present Date** (`YYYY-MM-DD`).
-  - Whenever Quotation Date is modified, Validity Date automatically updates to +15 days from the new Quotation Date.
-  - Quick **`+15 Days (Default)`** preset button allows instant re-application.
+For a mixed PDF, make the reading decision per page or region. Retain useful text from one page even when another needs OCR. Reconcile overlapping readings by source location so a cropped retry does not create a duplicate item.
 
----
+## 4. Interpret handwriting carefully and produce English output
 
-### Priority 9: Rate Library Edit Pop-up, Microsecond Saving & Breathable Layout (Completed)
-- **Replaced "Audit" with "Edit" Pop-up Button**:
-  - Replaced the previous "Audit" button with a modern **"Edit"** action button featuring a `Pencil` icon across both desktop table rows and mobile touch-optimized cards.
-  - Table header updated to **"Actions"** for clean visual hierarchy.
-- **Glassmorphism Edit Modal Pop-up**:
-  - Modern Glassmorphism container (`bg-white/90 backdrop-blur-2xl rounded-3xl border border-white/80 shadow-[0_24px_60px_-12px_rgba(30,58,138,0.25)]`).
-  - Ambient glass gradient accent bar (`from-blue-600 via-indigo-500 to-sky-400`).
-- **Required & Automated Fields**:
-  - **`Item Code`**: Fully automated and sequence-preserved (`JPA-001`, `JPA-002`, ...); displayed as read-only with an "Auto" badge so item code sequence remains strictly consecutive.
-  - **`Item Name`**: Required (`*`), auto-capitalized.
-  - **`Master Rate (₹)`**: Required (`*`), supports exact 2-decimal rates.
-  - **`Unit`**: Required (`*`), e.g. Nos, Ltrs, Box, Pkt.
-  - **`GST Rate`**: Required (`*`), glass dropdown with 18%, 12%, 5%, 0% (Exempt).
-  - **`Specifications (Optional)`**: Clean, plain neutral text (`Specifications (Optional)`) strictly without colored badges, pills, or highlights.
-  - **`Pack (Optional)`**: Clean, plain neutral text for secondary pack sizing.
-- **Modern Glass Nurture Glassmorphism Typing Boxes**:
-  - Frosted translucent glass inputs (`bg-white/75 backdrop-blur-md border border-slate-200/90 rounded-xl shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.03)] focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500/80 focus:bg-white transition-all`).
-- **Microsecond Saving Performance & Clean White Glassmorphism Notification**:
-  - **0ms Instant Optimistic UI Update**: Product list updates in UI state instantaneously with zero perceived delay.
-  - **White Glassmorphism Toast Notification**: Translucent white frosted glass banner (`bg-white/90 backdrop-blur-2xl rounded-2xl border border-white/80 shadow-[0_12px_36px_rgba(30,58,138,0.16)]`) with a clean green checkmark (`CheckCircle2`).
-  - **No Distracting Emojis**: Clean corporate typography strictly without emojis (`⚡`).
-  - **Clear Status & Saved Content**: Explicitly displays **"Saved Successfully"** along with the exact saved product name and master rate (`<Product Name> • ₹<Rate>`).
-  - **Non-blocking Background Persistence**: Dispatches `PUT /api/products` asynchronously with price history audit logging.
-- **Breathable Header & Page Spacing**:
-  - Header height increased from cramped `h-14` to generous `min-h-16 sm:min-h-20 md:min-h-22` with comfortable padding (`py-3.5 sm:py-4.5 px-4 sm:px-8 md:px-10`).
-  - Page container padded comfortably (`p-4 sm:p-6 md:p-8 lg:p-10 space-y-6 sm:space-y-8`) giving the Rate Library Header ample breathing space.
+Use the visible strokes, surrounding words, unit markers, document layout, and catalogue aliases together. The aim is to recover what the employee wrote. A familiar catalogue entry can support a reading, but resemblance alone cannot establish a product’s identity.
 
----
+- For `evrdy AAA batt`, propose **Eveready AAA Battery** when the visible variant and catalogue evidence agree.
+- For `evrdy batt`, preserve the supported description. If both AA and AAA exist, ask **“Which battery size do you need, AA or AAA?”** Leave the rate unresolved until the variant is known.
+- For a recognizable item written in Tamil or another supported language, propose its English description. Preserve brand names, product codes, dimensions, and units. Keep the original reading available separately.
+- For a short but legitimate code such as `CR2032`, preserve the code and check the catalogue. Do not discard it merely because it is absent from an English dictionary.
+- For fragments resembling `Aa Cr A Ee Acein Nti`, do not invent a plausible product. If the relevant source region still cannot be read, leave Particulars empty and show **“Item name unclear — review original.”**
 
-### Priority 10: Apple macOS / iOS Glassmorphism Company Folders, Multi-Unit Rate Inheritance & Zero-Emoji Policy (Completed)
-- **Apple macOS / iOS Glassmorphism Folder Grid**:
-  - **Apple-Inspired Glassmorphic Card Architecture**: Translucent frosted glass cards (`bg-white/70 backdrop-blur-2xl rounded-3xl border border-white/80 shadow-[0_12px_36px_rgba(30,58,138,0.08)] hover:shadow-[0_20px_45px_rgba(30,58,138,0.16)]`) with subtle border highlights.
-  - **Apple macOS 3D Glass Folder Icon**: Radiant blue gradient folder badge (`bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 rounded-2xl shadow-lg shadow-blue-500/25`) with translucent interior tab and gloss reflections.
-  - **Multi-Unit Badges & Store Preview Chips**: Displays total active branch count pill (e.g. `3 units`) and preview pills for specific stores (e.g. `Homecentre`, `Madurai`, `Prozone Mall`, `Brooke Fields`).
-  - **Folder Drill-Down & Breadcrumbs**: Clicking "Open Folder" navigates into a dedicated folder workspace with seamless breadcrumb navigation (`← All Folders / <Folder Name>`), "+ Add Unit" shortcut, and quick "Quote" generation.
-  - **3-Way View Switcher**: Instant switching between:
-    - **Company Folders** (Apple macOS/iOS Glassmorphism Grid)
-    - **Editable Table** (Spreadsheet grid for rapid inline edits)
-    - **Card Grid** (Detailed customer identity cards)
-- **"New Folder" Creation Modal for Employees & Administrators**:
-  - Accessible via "+ New Folder" Apple Glassmorphic action button.
-  - Modern Glassmorphism modal allowing instant creation and grouping of parent company accounts:
-    - `Company / Group Name *` (e.g., `Lifestyle International`, `Landmark Group`)
-    - `Description / Division (Optional)` (e.g., `Retail Chains & Hypermarkets`)
-    - `Master GSTIN (Optional)`
-    - `Primary Billing Address (Optional)`
-  - Full CRUD integration via `/api/customers/folders` (`GET`, `POST`, `DELETE`).
-- **Cross-Unit Rate Memory Inheritance (Old / Existing Rates Auto-Recall)**:
-  - When an Employee or Administrator writes a quotation for any unit or store under a company group (e.g. `Lifestyle International - Prozone Mall`), previous rates quoted or saved for any sister unit (e.g. `Homecentre` or `Madurai`) are automatically recalled and applied.
-  - `findMatchingRate` in `rate-memory.ts` groups sister branches via `company_folders` and legal name normalization (`normalizeCompanyName`), querying historical rates and previous quotation items across all sibling branches.
-  - Customer selection in Quotation Builder (`/quotations/new` and `/quotations/[id]/edit`) automatically triggers a background rate reconciliation for any unpriced items.
-- **Strict Zero-Emoji Policy & Comfortable Header Box Redesign**:
-  - Strictly eliminated all unicode emojis (`⚡`, `✓`, `✨`) from all saving banners, toasts, status badges, buttons, tooltips, and modals.
-  - Removed debug and auto-save text: `"Directly editable table with microsecond background synchronization ⚡ Microsecond auto-save active"`.
-  - **Removed Header Badges & Subtitle**: Removed `{customers.length} Accounts` and `{companyFolderGroups.length} Folders` count pills, and removed the subtitle `"Organized client accounts, company groups, and store branches"`.
-  - **Comfortable & Responsive Two-Tier Header Box**:
-    - Modern Apple glassmorphism container (`bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:p-7 border border-slate-200/80 shadow-xs space-y-4 sm:space-y-5`).
-    - **Top Tier**: Clean, bold `Registered Client Accounts` title with comfortable breathing space, paired with primary action buttons (`+ New Folder`, `+ Add Customer`, `Delete All`) with `min-h-[42px]` tap targets.
-    - **Bottom Tier**: Expansive, responsive search input with clear button (`X`) and sleek segmented view switcher (`Company Folders`, `Editable Table`, `Card Grid`) that adapts fluidly to all screen widths.
-  - Save notifications standardized to clean **White Glassmorphism** cards (`bg-white/95 backdrop-blur-2xl border border-white/80`) with clean vector SVGs (`CheckCircle2`) explicitly stating **"Saved Successfully"** with the saved item and rate.
+Keep employee-facing descriptions, labels, questions, and review messages in English. Keep raw OCR in a separate **View original** area. Show the source crop where the existing pipeline can reliably identify it. Garbled OCR must never become a suggested English product name merely because it contains Latin letters.
 
-- **Unit Quotations Drill-Down & Zero Duplicates Security**:
-  - **Interactive Unit Chips & Row Action**: Clicking any unit chip on the Folder card (e.g. `Homecentre, Brooks`, `Madurai`, `Prozone Mall`) or clicking `Quotes` in the folder table instantly opens the **Unit Quotations Modal**.
-  - **Zero Duplicates Guaranteed**: Server-side queries enforce `GROUP BY q.id` and the client state maintains a strict `Map<string, Quotation>` de-duplication layer, eliminating duplicate quotes completely.
-  - **Enterprise Security**: Enforces RBAC permissions, authenticated sessions, tenant isolation, and parameterized SQL queries (`args: [...]`).
-  - **Comprehensive Quotation Overview**: Displays Quote No, Date, Validity, Section & Item breakdown, Status (`Approved` / `Draft`), and total amount formatted in Indian Rupees (`formatINR`). Includes direct action buttons: `View`, `Edit`, `PDF`, `Excel`, and `+ New Quote for Unit`.
-- **Custom Folder DP / Logo (WebP, PNG, JPEG, JPG, AVIF, SVG)**:
-  - **High-Quality DP Display**: Folders support custom brand logos/DPs with rounded-2xl geometry, glass border highlights, and subtle shadow.
-  - **DP Customizer Modal**: Hovering on any folder icon reveals a camera badge to upload or change the DP. Supports direct image file upload (`image/webp, image/png, image/jpeg, image/jpg, image/avif, svg`) or Web image URLs.
-  - **Instant Persistence**: Updates are saved immediately via `PUT /api/customers/folders` and stored in SQLite `company_folders.logo_url` column with non-destructive fallback to the Apple 3D glass blue folder icon.
+## 5. Assign values to columns, even without headings
 
-- **Calibri 11pt, Pure White Glassmorphism Boxes & Automated Mobile/Monitor Responsiveness**:
-  - **Typography Standardization**: Font family strictly set to **Calibri** (`font-['Calibri']`) with size **11pt** (`text-[11pt]`) across all unit tables, spreadsheet grids, card containers, inputs, labels, and action pills.
-  - **Pure White Glassmorphism Capsules (Apple iOS / iPhone Aesthetic)**:
-    - Built with `.glass-box-white` (`bg-white/90 backdrop-blur-2xl border border-white/95 shadow-[0_4px_20px_rgba(15,23,42,0.04)]`) and `.glass-input-white` (`bg-white/92 backdrop-blur-xl border border-slate-200/80 rounded-2xl py-2 px-3.5 text-[11pt] font-['Calibri'] text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20`).
-    - Eliminates dull grey/flat boxes with modern frosted glass capsules matching the iOS reference UI.
-    - Store Code styled in Apple frosted amber/blue glass pill with high-contrast mono typography.
-  - **Comfortable Expanded Visibility (Zero Truncation on Billing Address)**:
-    - Expanded `BILLING ADDRESS` column on desktop monitors to `min-w-[460px] lg:min-w-[540px] xl:min-w-[600px]` with generous horizontal breathing space so long multi-store addresses are fully visible without truncation or squeezing.
-    - Full-width comfortable visibility on mobile cards with multi-line auto-wrapping textareas.
-  - **Automated Mobile vs. Monitor Responsiveness**:
-    - **Monitor / Desktop View (`hidden md:block`)**: Spacious, comfortable pure white glass table with expanded columns, generous row heights, comfortable cell padding (`py-3.5 px-3.5`), and quick action buttons.
-    - **Mobile Screen View (`block md:hidden`)**: Automatically shrinks into an Apple iOS Frosted Glass Card Stack (identical to the iPhone UI reference) with unit index pills, comfortable input capsules, full billing address boxes, two-column contact details, and soft frosted action buttons (`Quotes`, `+ Quote`, `Delete`).
+Map each source item to the fields available in the actual form: **Section, Particulars, Specification, Pack, Quantity, Unit, Rate, and GST percentage**. Preserve brand, subcategory, or HSN when supported by the relevant product form or record. Keep a line total separate from a unit rate.
 
----
+When headings are missing or unreadable, compare neighbouring rows. Use cell alignment, repeated patterns, currency signs, unit abbreviations, percentage signs, and arithmetic where appropriate. Re-evaluate the layout if it changes halfway down a page. For an unstructured handwritten list, identify the values by their meaning rather than forcing every line into the same column order.
 
-### Verification & Quality Assurance Record
-- **Automated Tests**: 61/61 tests passing across 18 test suites (`npm test`):
-  - `tests/company-folders-and-rate-inheritance.test.ts` (Unit quotations drill-down, de-duplication guarantee, custom folder DP/logo upload, group normalization, multi-unit rate memory inheritance, zero emojis check, Apple Glassmorphism UI verification)
-  - `tests/rate-library-edit-modal.test.ts` ("Edit" popup modal, automated item code, required fields, microsecond save, breathable layout)
-  - `tests/customer-store-code-editable.test.ts` (Store code persistence, microsecond PUT, centered Excel export formatting, dynamic responsive PDF generator, Customer Search Combobox & +15 Days Validity Date functionality)
-  - `tests/quotation.test.ts` (Financial calculation, genuine Excel formulas, A4 PDF)
-  - `tests/regression.test.ts` (Formula positions, column headers, security)
-  - `tests/customer-cascade-delete.test.ts` (Clean foreign key cascade delete)
-  - `tests/item-code-resequence.test.ts` (Consecutive item code renumbering)
-  - `tests/excel-extraction-robustness.test.ts` (Binary .xls extraction)
-  - `tests/parseur-screenshot-fix.test.ts` (Screenshot OCR unit normalization & 18% default GST)
-  - `tests/google-security.test.ts` (reCAPTCHA, Google OAuth, RBAC isolation, prompt injection defense)
-- **Production Build**: Clean Turbopack production build (`npm run build`, 34/34 static/dynamic routes compiled with 0 errors).
-- **History Preservation**: Past quotations, invoices, and rate history records remain strictly immutable.
+Use these examples as acceptance cases. Never hard-code their answers into production logic:
+
+| Source reading | Expected interpretation |
+|---|---|
+| `Garbage cover big 30×50 – 40 kg` | Particulars: Garbage cover, large. Specification: 30×50. Quantity: 40. Unit: kg. Preserve the dimensions without inventing a measurement unit. |
+| `Tape 48 mm / 3 rolls / ₹25 each / ₹75` | Particulars: Tape. Specification: 48 mm. Quantity: 3. Unit: roll. Rate: ₹25. The line total is ₹75. |
+| `PVC elbow 25 mm – 4 pcs` | Specification: 25 mm. Quantity: 4. Unit: pieces. The number 25 belongs to the product size. |
+| `Tape 48 mm / 3 / 25` | Preserve the readable description and size. Use adjacent rows if they establish a consistent layout. Otherwise ask whether 25 is the unit rate or line total. |
+| A readable description followed by an overwritten digit | Keep the description. Flag the quantity alone for review and continue processing the remaining items. |
+
+Do not assume every line has a quantity of 1, a unit of Nos, a GST rate of 18%, or a Housekeeping classification. If the employee explicitly chose a section for the import, retain it as the employee’s choice. Keep unknown values empty and distinguish them from a source that explicitly states zero.
+
+## 6. Use Fuse.js to find candidates and verify them against evidence
+
+Search the Rate Library using an exact item code or verified alias first. Use Fuse.js for approximate matches on readable descriptions, aliases, and brands. Compare distinguishing features before transferring product details: model, variant, size, pack, and selling unit. AA and AAA batteries can return similar search scores while having different prices.
+
+Copy a verified rate only when the selected record applies to the same product and selling unit. A supplier’s stated price should remain distinguishable from the approved master rate. Use trusted mappings or approved records for GST and HSN. An unfamiliar but clearly written product must remain a valid editable row even when the catalogue has no match.
+
+## 7. Make the preview useful to the employee
+
+Show **ready items**, **items with fields to review**, and **unreadable regions** separately. The displayed item count should describe actual product candidates. Table borders, repeated headings, punctuation-only lines, and OCR debris must not inflate the count.
+
+If a row has a readable item and one unclear field, retain the good values and highlight that field. If a region contains no recoverable item name, place it in review with the original evidence and a blank editable description. Exclude unresolved regions from **Select All** and bulk insertion. Enforce the same validation on the receiving side so an unresolved row cannot enter a quotation through a stale selection.
+
+Let the employee correct a row, accept it, or skip it. Preserve corrections while they review neighbouring rows. If an entire section shares one uncertain column mapping, ask once and preview the effect across that section. A useful message is **“I found 8 readable items. Two quantities need review.”** Generate the counts from the actual result.
+
+## 8. Leave a verification plan I can run
+
+Prepare focused checks for these cases:
+
+1. A real handwritten photo containing one clear product, one ambiguous variant, and one unreadable line. The expected outcomes are an English description, a focused clarification, and an unselected review region.
+2. A headerless workbook with a blank middle cell. Values must stay aligned with their source cells.
+3. A digital PDF with a readable title and an image-based item list. The import must process the list as well as the title.
+4. A supplied OCR response containing table separators and random fragments. Those fragments must never appear as proposed Particulars or enter a quotation through Select All.
+5. A previously unseen handwritten product. Preserve its readable description and quantity without forcing a catalogue match.
+6. A list longer than the existing sample fixture. Discover rows from the uploaded document without assuming a fixed item count.
+
+Separate parser tests, upload-path tests with mocked OCR, and manual checks that require genuine handwriting and the real recognizer. For the real sample, ask me to compare the output with a human-written answer key: items recovered, quantities exactly correct, wrong values accepted, and unclear values correctly flagged. This gives me a practical way to tell whether recognition improved.
+
+Finish with **files changed**, **what the source inspection established**, **what still needs runtime confirmation**, and **the exact terminal commands and manual steps for me to use**. Leave the code saved and all execution to me.

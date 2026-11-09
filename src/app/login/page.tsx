@@ -183,25 +183,37 @@ function LoginForm() {
           </p>
         </div>
 
-        {/* Modern Segmented Mode Switcher */}
-        <div className="flex p-1 bg-slate-100/90 rounded-2xl mb-5 border border-slate-200/60 shadow-2xs">
+        {/* Modern Segmented Mode Switcher with Smooth Sliding Glass Thumb */}
+        <div className="relative grid grid-cols-2 p-1 bg-slate-200/65 backdrop-blur-md rounded-2xl mb-5 border border-white/85 shadow-inner">
+          <div
+            aria-hidden="true"
+            style={{
+              transform:
+                mode === 'signin'
+                  ? 'translate3d(0%, 0, 0)'
+                  : 'translate3d(100%, 0, 0)',
+            }}
+            className="glass-segmented-thumb pointer-events-none absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-xl bg-white shadow-sm border border-slate-200/70"
+          />
           <button
             type="button"
             onClick={() => handleModeSwitch('signin')}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${mode === 'signin'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800'
-              }`}
+            className={`relative z-10 py-2 rounded-xl text-xs font-bold transition-colors duration-200 cursor-pointer select-none ${
+              mode === 'signin'
+                ? 'text-blue-700'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             Sign In
           </button>
           <button
             type="button"
             onClick={() => handleModeSwitch('signup')}
-            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${mode === 'signup'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800'
-              }`}
+            className={`relative z-10 py-2 rounded-xl text-xs font-bold transition-colors duration-200 cursor-pointer select-none ${
+              mode === 'signup'
+                ? 'text-blue-700'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             Create New Account
           </button>

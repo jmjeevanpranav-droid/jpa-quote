@@ -299,10 +299,10 @@ export default function RateLibraryPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFF]">
+    <div className="flex h-dvh overflow-hidden bg-[#F8FAFF]">
       <AppSidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto smooth-scroll-pane">
         <AppHeader
           title="Rate Library & Product Memory"
           subtitle="Master catalog, verified pricing rates & automated rate memory"

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
@@ -28,6 +28,8 @@ import {
   Calendar,
   Layers,
   Loader2,
+  Menu,
+  X,
 } from 'lucide-react';
 import { calculateQuotationSummary, formatINR } from '@/lib/calculations/financial';
 import { capitalizeInput } from '@/lib/utils/formatters';
@@ -163,6 +165,12 @@ function NewQuotationContent() {
   // UI state
   const [showPreview, setShowPreview] = useState(true);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setShowPreview(false);
+    }
+  }, []);
   const [aiImportTargetSecId, setAiImportTargetSecId] = useState<string | null>(null);
   const [aiImportTargetSecName, setAiImportTargetSecName] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -675,7 +683,10 @@ function NewQuotationContent() {
       if (metadata.storeGuess) {
         setStoreName(metadata.storeGuess);
       }
-      if (metadata.customerGuess && customers.length > 0 && !selectedCustomerId) {
+      if (metadata.documentDate) {
+        setQuoteDate(metadata.documentDate);
+      }
+      if (metadata.customerGuess && !selectedCustomerId) {
         const guessNorm = metadata.customerGuess.toLowerCase().replace(/[^a-z0-9]/g, '');
         const matchedCust = customers.find((c: any) => {
           const cNorm = c.company_name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -683,6 +694,8 @@ function NewQuotationContent() {
         });
         if (matchedCust) {
           handleCustomerChange(matchedCust.id);
+        } else if (!customerName || customerName.trim() === '') {
+          setCustomerName(metadata.customerGuess);
         }
       }
     }
@@ -690,11 +703,15 @@ function NewQuotationContent() {
     const preparedItems: { item: QuoteItem; sectionName: string }[] = [];
 
     for (const aiItm of aiItems) {
-      let unitRate = aiItm.rate || 0;
-      let isAutofilled = false;
-      let savedDate = undefined;
+      if (!aiItm.description || !aiItm.description.trim() || aiItm.matchType === 'unreadable' || aiItm.rowStatus === 'unreadable') {
+        continue;
+      }
 
-      // Silently match Rate Memory if rate was null in the uploaded document
+      let unitRate = aiItm.rate || 0;
+      let isAutofilled = Boolean(aiItm.rateSource === 'catalog' || aiItm.catalogRate);
+      let savedDate = aiItm.rateSource === 'catalog' ? 'Rate Library' : undefined;
+
+      // Silently match Rate Memory if rate was null in the uploaded document or to enrich specs
       if (!unitRate || unitRate <= 0) {
         try {
           const matchRes = await fetch('/api/products/match', {
@@ -710,26 +727,37 @@ function NewQuotationContent() {
           });
           if (matchRes.ok) {
             const match = await matchRes.json();
-            if (match.matched && match.rate) {
-              unitRate = match.rate;
-              isAutofilled = true;
-              savedDate = match.savedRateDate;
+            if (match.matched) {
+              if (match.rate && (!unitRate || unitRate <= 0)) {
+                unitRate = match.rate;
+                isAutofilled = true;
+                savedDate = match.savedRateDate || match.badgeText || 'Rate Library';
+              }
+              if (!aiItm.specification && match.specification) aiItm.specification = match.specification;
+              if (!aiItm.pack && match.pack) aiItm.pack = match.pack;
+              if (!aiItm.unit && match.unit) aiItm.unit = match.unit;
+              if (match.gstRate != null && Number(match.gstRate) > 0) aiItm.gstRate = match.gstRate;
             }
           }
         } catch (e) {}
       }
 
+      const finalGst =
+        aiItm.gstRate != null && !isNaN(aiItm.gstRate) && Number(aiItm.gstRate) > 0
+          ? Number(aiItm.gstRate)
+          : 18;
+
       preparedItems.push({
         item: {
           id: `itm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           storeName: storeName || (metadata?.storeGuess || ''),
-          description: aiItm.description,
+          description: aiItm.description.trim(),
           specification: aiItm.specification || '',
           pack: aiItm.pack || '',
           quantity: aiItm.quantity ?? 0,
-          unit: aiItm.unit || 'Nos',
+          unit: aiItm.unit || '',
           unitRate,
-          gstRate: aiItm.gstRate != null ? Number(aiItm.gstRate) : 18,
+          gstRate: finalGst,
           isRateAutofilled: isAutofilled,
           savedRateDate: savedDate,
         },
@@ -994,58 +1022,75 @@ function NewQuotationContent() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFF]">
+    <div className="flex h-dvh overflow-hidden bg-[#F8FAFF]">
       <AppSidebar />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Action Bar */}
-        <header className="sticky top-0 z-20 flex flex-wrap gap-3 items-center justify-between min-h-18 py-3 px-3 sm:px-6 bg-white/75 backdrop-blur-md border-b border-slate-200/80">
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>Create Rate Card</span>
-                <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold">
-                  {quoteNumber}
-                </span>
+        <header className="sticky top-0 z-20 flex flex-wrap gap-2 sm:gap-3 items-center justify-between min-h-15 sm:min-h-18 py-2.5 sm:py-3 px-3 sm:px-6 bg-white/85 backdrop-blur-xl border-b border-slate-200/80 shadow-[0_4px_20px_-4px_rgba(15,23,42,0.03)]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('jpa:toggle-sidebar'));
+              }}
+              className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl text-slate-700 hover:text-slate-950 hover:bg-slate-100 border border-slate-200 transition-all duration-150 active:scale-90 cursor-pointer shrink-0 shadow-2xs"
+              title="Open Navigation Menu"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2 truncate">
+                <span className="truncate">Create Rate Card</span>
+                {quoteNumber && (
+                  <span className="font-mono text-[11px] sm:text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold shrink-0">
+                    {quoteNumber}
+                  </span>
+                )}
               </h1>
             </div>
           </div>
 
           {/* Top-Right Mandatory Action Bar: Save Draft · Preview · ⬇ Download ▾ */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 ml-auto">
             <button
               type="button"
               onClick={() => handleSaveQuotation('draft')}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95 shadow-2xs transition-all cursor-pointer"
             >
               {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              <span>Save Draft</span>
+              <span className="sm:hidden">Draft</span>
+              <span className="hidden sm:inline">Save Draft</span>
             </button>
 
             <button
               type="button"
               onClick={() => setShowPreview(!showPreview)}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-300 cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 cursor-pointer ${
                 showPreview
                   ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs hover:bg-blue-100/70'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs hover:border-slate-300'
               }`}
             >
-              <span className="transition-transform duration-300">
+              <span className="transition-transform duration-250">
                 {showPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </span>
-              <span>{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
+              <span className="sm:hidden">Preview</span>
+              <span className="hidden sm:inline">{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSaveQuotation('approved')}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-xs transition-all cursor-pointer"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Save as Final</span>
+              <span className="sm:hidden">Final</span>
+              <span className="hidden sm:inline">Save as Final</span>
             </button>
 
             {/* Top-Right Download Dropdown */}
@@ -1058,10 +1103,10 @@ function NewQuotationContent() {
         </header>
 
         {/* Workspace Split Layout: Left Editor (60%) + Right Live A4 Preview (40%) */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
           {/* Left Main Quotation Form */}
           <div
-            className={`flex-1 min-w-0 lg:overflow-y-auto p-3 sm:p-6 space-y-6 transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            className={`flex-1 min-w-0 overflow-y-auto smooth-scroll-pane p-3 sm:p-6 space-y-5 sm:space-y-6 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               showPreview ? 'lg:w-3/5' : 'w-full'
             }`}
           >
@@ -1674,17 +1719,55 @@ function NewQuotationContent() {
             </div>
           </div>
 
-          {/* Right Live A4 Quotation Preview (Smooth Slide-in / Expand Drawer) */}
+          {/* Right Live A4 Quotation Preview — Desktop Split Slider + Mobile Slide-Over Sheet */}
           <div
-            className={`min-w-0 shrink-0 border-slate-200/80 bg-slate-100/60 overflow-hidden flex flex-col transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            className={`hidden lg:flex min-w-0 shrink-0 border-slate-200/80 bg-slate-100/60 overflow-hidden flex-col transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               showPreview
-                ? 'w-full lg:w-2/5 border-l opacity-100'
-                : 'w-0 lg:w-0 border-l-0 opacity-0 pointer-events-none'
+                ? 'lg:w-2/5 border-l opacity-100'
+                : 'lg:w-0 border-l-0 opacity-0 pointer-events-none'
             }`}
             style={{ willChange: 'width, opacity' }}
           >
-            <div className="w-full min-w-[360px] sm:min-w-[420px] xl:min-w-[480px] p-4 sm:p-6 h-full overflow-y-auto">
+            <div className="w-full min-w-[380px] xl:min-w-[460px] p-4 sm:p-6 h-full overflow-y-auto smooth-scroll-pane">
               <LiveQuotationPreview data={previewData} />
+            </div>
+          </div>
+
+          {/* Mobile & Tablet Smooth Slide-Over Preview Drawer (< lg) */}
+          <div
+            className={`fixed inset-0 z-40 lg:hidden flex justify-end transition-[visibility] duration-300 ${
+              showPreview ? 'visible pointer-events-auto' : 'invisible pointer-events-none delay-300'
+            }`}
+          >
+            <div
+              className={`fixed inset-0 bg-slate-900/45 backdrop-blur-[2px] transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                showPreview ? 'opacity-100' : 'opacity-0'
+              }`}
+              onClick={() => setShowPreview(false)}
+              aria-hidden="true"
+            />
+            <div
+              style={{
+                transform: showPreview ? 'translate3d(0, 0, 0)' : 'translate3d(102%, 0, 0)',
+                transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                willChange: 'transform',
+              }}
+              className="relative z-10 w-full sm:w-[90vw] sm:max-w-xl h-dvh bg-slate-100/95 backdrop-blur-2xl border-l border-white/80 shadow-2xl flex flex-col"
+            >
+              <div className="flex items-center justify-between px-4 py-3 bg-white/90 border-b border-slate-200/80">
+                <span className="text-sm font-extrabold text-slate-900">Live A4 Rate Card Preview</span>
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(false)}
+                  className="w-8.5 h-8.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-all active:scale-90 cursor-pointer"
+                  aria-label="Close Live Preview"
+                >
+                  <X className="w-4.5 h-4.5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-5">
+                <LiveQuotationPreview data={previewData} />
+              </div>
             </div>
           </div>
         </div>

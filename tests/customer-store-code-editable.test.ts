@@ -1,3 +1,8 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+process.env.JPA_DATA_DIR = mkdtempSync(join(tmpdir(), 'jpa-test-store-code-'));
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getDb } from '../src/lib/db/client';
@@ -54,6 +59,11 @@ test('Customer Store Code & Editable Table Workflow', async (t) => {
       args: [custId],
     });
     assert.equal(updated.rows[0].store_code, 'PZ-02');
+
+    await db.execute({
+      sql: 'DELETE FROM customers WHERE id = ?',
+      args: [custId],
+    });
   });
 
   await t.test('2. Excel Generator places Store Code near No. and in the centre of Store name in Column B', async () => {

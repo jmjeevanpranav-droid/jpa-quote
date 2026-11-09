@@ -65,7 +65,7 @@ export default function SettingsPage() {
     gstin: '33BRGPM1867B1Z1',
     address: '16-P, Sakthi illam, Gandhi nagar, Mettuthottam, Podanur, Coimbatore-641023.',
     phone: '9790600971',
-    email: 'jeevanpranavagencies@gmail.com / jmjp77@gmail.com',
+    email: 'jeevanpranavagencies@gmail.com',
     website: 'https://www.jeevanpranavagencies.com/',
     bank_name: 'HDFC Bank Ltd',
     account_no: '50200034981273',

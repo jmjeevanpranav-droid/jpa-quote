@@ -28,16 +28,19 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Assign customer units to their folder
+    // Assign customer units to their folder (only for registered folders or explicit folder_name)
     for (const c of customersRes.rows) {
       const explicitFolder = c.folder_name ? String(c.folder_name).trim() : '';
       const derivedFolder = explicitFolder || normalizeCompanyName(String(c.company_name || ''));
       const key = derivedFolder.toLowerCase();
 
       if (!folderMap.has(key)) {
+        if (!explicitFolder) {
+          continue;
+        }
         folderMap.set(key, {
           id: `folder_auto_${key.replace(/\s+/g, '_')}`,
-          name: derivedFolder,
+          name: explicitFolder,
           unitsCount: 0,
           units: [],
         });

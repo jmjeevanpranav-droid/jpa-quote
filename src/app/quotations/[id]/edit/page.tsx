@@ -26,6 +26,8 @@ import {
   Layers,
   ArrowLeft,
   Loader2,
+  Menu,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { calculateQuotationSummary } from '@/lib/calculations/financial';
@@ -63,6 +65,12 @@ function EditQuotationContent({
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setShowPreview(false);
+    }
+  }, []);
 
   // Form State
   const [quoteNumber, setQuoteNumber] = useState('');
@@ -379,20 +387,29 @@ function EditQuotationContent({
   ) => {
     if (!importedItems || importedItems.length === 0) return;
 
-    const newItems: QuoteItem[] = importedItems.map((aiItm) => {
+    const validItems = (importedItems || []).filter(
+      (aiItm) =>
+        aiItm.description &&
+        aiItm.description.trim() &&
+        aiItm.matchType !== 'unreadable' &&
+        aiItm.rowStatus !== 'unreadable'
+    );
+    if (validItems.length === 0) return;
+
+    const newItems: QuoteItem[] = validItems.map((aiItm) => {
       const unitRate = Number(aiItm.rate || 0);
       const isAutofilled = Boolean(aiItm.isRateAutofilled || unitRate > 0);
       const savedDate = aiItm.savedRateDate || (isAutofilled ? 'Rate Memory' : undefined);
       return {
         id: `itm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         storeName: storeName || (metadata?.storeGuess || ''),
-        description: aiItm.description,
+        description: aiItm.description.trim(),
         specification: aiItm.specification || '',
         pack: aiItm.pack || '',
         quantity: aiItm.quantity ?? 0,
-        unit: aiItm.unit || 'Nos',
+        unit: aiItm.unit || '',
         unitRate,
-        gstRate: aiItm.gstRate != null ? Number(aiItm.gstRate) : 18,
+        gstRate: aiItm.gstRate != null ? Number(aiItm.gstRate) : 0,
         isRateAutofilled: isAutofilled,
         savedRateDate: savedDate,
       };
@@ -637,64 +654,80 @@ function EditQuotationContent({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFF]">
+    <div className="flex h-dvh overflow-hidden bg-[#F8FAFF]">
       <AppSidebar />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Action Bar */}
-        <header className="sticky top-0 z-20 flex items-center justify-between h-18 px-6 bg-white/75 backdrop-blur-md border-b border-slate-200/80">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-20 flex flex-wrap gap-2 sm:gap-3 items-center justify-between min-h-15 sm:min-h-18 py-2.5 sm:py-3 px-3 sm:px-6 bg-white/85 backdrop-blur-xl border-b border-slate-200/80 shadow-[0_4px_20px_-4px_rgba(15,23,42,0.03)]">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('jpa:toggle-sidebar'));
+              }}
+              className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl text-slate-700 hover:text-slate-950 hover:bg-slate-100 border border-slate-200 transition-all duration-150 active:scale-90 cursor-pointer shrink-0 shadow-2xs"
+              title="Open Navigation Menu"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <Link
               href={`/quotations/${id}`}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+              className="p-1.5 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all active:scale-90 shrink-0"
+              title="Back to Quotation"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
-            <div>
-              <h1 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <span>Edit Quotation</span>
-                <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2 truncate">
+                <span className="truncate">Edit Quotation</span>
+                <span className="font-mono text-[11px] sm:text-xs px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold shrink-0">
                   {quoteNumber}
                 </span>
               </h1>
-              <p className="text-xs text-slate-500">{customerName}</p>
+              <p className="hidden sm:block text-xs text-slate-500 truncate">{customerName}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 ml-auto">
             <button
               type="button"
               onClick={() => handleUpdateQuotation('draft')}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95 shadow-2xs transition-all cursor-pointer"
             >
               {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              <span>Save Changes</span>
+              <span className="sm:hidden">Save</span>
+              <span className="hidden sm:inline">Save Changes</span>
             </button>
 
             <button
               type="button"
               onClick={() => setShowPreview(!showPreview)}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-300 cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 cursor-pointer ${
                 showPreview
                   ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs hover:bg-blue-100/70'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs hover:border-slate-300'
               }`}
             >
-              <span className="transition-transform duration-300">
+              <span className="transition-transform duration-250">
                 {showPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </span>
-              <span>{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
+              <span className="sm:hidden">Preview</span>
+              <span className="hidden sm:inline">{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleUpdateQuotation('approved')}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-xs transition-all cursor-pointer"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Approve & Finalize</span>
+              <span className="sm:hidden">Approve</span>
+              <span className="hidden sm:inline">Approve & Finalize</span>
             </button>
 
             <DownloadDropdown quotationId={id} quoteNumber={quoteNumber} onBeforeDownload={() => handleUpdateQuotation()} />
@@ -702,10 +735,10 @@ function EditQuotationContent({
         </header>
 
         {/* Workspace */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden relative">
           {/* Form */}
           <div
-            className={`flex-1 min-w-0 overflow-y-auto p-6 space-y-6 transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            className={`flex-1 min-w-0 overflow-y-auto smooth-scroll-pane p-3 sm:p-6 space-y-5 sm:space-y-6 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               showPreview ? 'lg:w-3/5' : 'w-full'
             }`}
           >
@@ -1249,17 +1282,55 @@ function EditQuotationContent({
             </div>
             </div>
 
-          {/* Right Live Preview (Smooth Slide-in / Expand Drawer) */}
+          {/* Right Live Preview — Desktop Split Slider + Mobile Slide-Over Sheet */}
           <div
-            className={`hidden lg:flex flex-col min-w-0 shrink-0 border-slate-200/80 bg-slate-100/60 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            className={`hidden lg:flex flex-col min-w-0 shrink-0 border-slate-200/80 bg-slate-100/60 overflow-hidden transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               showPreview
                 ? 'lg:w-2/5 border-l opacity-100'
                 : 'lg:w-0 border-l-0 opacity-0 pointer-events-none'
             }`}
             style={{ willChange: 'width, opacity' }}
           >
-            <div className="w-full min-w-[360px] sm:min-w-[420px] xl:min-w-[480px] p-6 h-full overflow-y-auto">
+            <div className="w-full min-w-[380px] xl:min-w-[460px] p-4 sm:p-6 h-full overflow-y-auto smooth-scroll-pane">
               <LiveQuotationPreview data={previewData} />
+            </div>
+          </div>
+
+          {/* Mobile & Tablet Smooth Slide-Over Preview Drawer (< lg) */}
+          <div
+            className={`fixed inset-0 z-40 lg:hidden flex justify-end transition-[visibility] duration-300 ${
+              showPreview ? 'visible pointer-events-auto' : 'invisible pointer-events-none delay-300'
+            }`}
+          >
+            <div
+              className={`fixed inset-0 bg-slate-900/45 backdrop-blur-[2px] transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                showPreview ? 'opacity-100' : 'opacity-0'
+              }`}
+              onClick={() => setShowPreview(false)}
+              aria-hidden="true"
+            />
+            <div
+              style={{
+                transform: showPreview ? 'translate3d(0, 0, 0)' : 'translate3d(102%, 0, 0)',
+                transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                willChange: 'transform',
+              }}
+              className="relative z-10 w-full sm:w-[90vw] sm:max-w-xl h-dvh bg-slate-100/95 backdrop-blur-2xl border-l border-white/80 shadow-2xl flex flex-col"
+            >
+              <div className="flex items-center justify-between px-4 py-3 bg-white/90 border-b border-slate-200/80">
+                <span className="text-sm font-extrabold text-slate-900">Live A4 Rate Card Preview</span>
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(false)}
+                  className="w-8.5 h-8.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-all active:scale-90 cursor-pointer"
+                  aria-label="Close Live Preview"
+                >
+                  <X className="w-4.5 h-4.5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-5">
+                <LiveQuotationPreview data={previewData} />
+              </div>
             </div>
           </div>
         </div>

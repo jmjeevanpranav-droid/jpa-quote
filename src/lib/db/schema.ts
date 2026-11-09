@@ -1,6 +1,27 @@
-import { getDb } from './client';
+import { getDb, getDbKey } from './client';
+
+const initPromises = new Map<string, Promise<void>>();
+
+export function resetSchemaCache() {
+  initPromises.delete(getDbKey());
+}
 
 export async function initDb() {
+  const key = getDbKey();
+  const existing = initPromises.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const promise = runInitDb().catch((err) => {
+    initPromises.delete(key);
+    throw err;
+  });
+  initPromises.set(key, promise);
+  return promise;
+}
+
+async function runInitDb() {
   const db = getDb();
 
   try {

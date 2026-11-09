@@ -216,8 +216,9 @@ export default function CustomersPage() {
     }
   };
 
-  // Debounce timers reference
+  // Debounce timers & dirty-row tracking so scrolling/blurring unchanged inputs never fires network saves
   const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
+  const dirtyRowsRef = useRef<Set<string>>(new Set());
 
   const fetchCustomers = () => {
     setLoading(true);
@@ -295,6 +296,7 @@ export default function CustomersPage() {
    * Optimistic instant update (0ms latency)
    */
   const handleInlineChange = (id: string, field: keyof CustomerRecord, value: string) => {
+    dirtyRowsRef.current.add(id);
     let updatedCustomer: CustomerRecord | undefined;
     setCustomers((prev) =>
       prev.map((c) => {
@@ -313,19 +315,24 @@ export default function CustomersPage() {
     if (updatedCustomer) {
       const payload = updatedCustomer;
       debounceTimers.current[id] = setTimeout(() => {
+        dirtyRowsRef.current.delete(id);
         executeSave(id, payload);
       }, 350);
     }
   };
 
   /**
-   * Immediate save on Blur event
+   * Immediate save on Blur event (only when modified)
    */
   const handleBlur = (id: string) => {
     if (debounceTimers.current[id]) {
       clearTimeout(debounceTimers.current[id]);
       delete debounceTimers.current[id];
     }
+    if (!dirtyRowsRef.current.has(id)) {
+      return;
+    }
+    dirtyRowsRef.current.delete(id);
     const target = customers.find((c) => c.id === id);
     if (target) {
       executeSave(id, target);
@@ -570,15 +577,18 @@ export default function CustomersPage() {
       }
     }
 
-    // Group customer accounts by company folder
+    // Group customer accounts by company folder (only for registered folders or explicit folder_name)
     for (const c of customers) {
       const explicitFolder = c.folder_name ? c.folder_name.trim() : '';
       const folderName = explicitFolder || normalizeCompanyName(c.company_name || 'General Accounts');
       const key = folderName.toLowerCase();
 
       if (!map.has(key)) {
+        if (!explicitFolder) {
+          continue;
+        }
         map.set(key, {
-          name: folderName,
+          name: explicitFolder,
           gstin: c.gstin || null,
           logo_url: null,
           units: [],
@@ -728,15 +738,15 @@ export default function CustomersPage() {
   }, [unitQuotes, unitQuotesSearch]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFF]">
+    <div className="flex h-dvh overflow-hidden bg-[#F8FAFF]">
       <AppSidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto smooth-scroll-pane">
         <AppHeader title="Customers & Store Locations" />
 
         <main className="p-4 sm:p-6 md:p-8 max-w-[1500px] mx-auto w-full space-y-6">
           {/* Top Title & Action Bar - Comfortable & Responsive Apple Glassmorphic Box */}
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:p-7 border border-slate-200/80 shadow-xs space-y-4 sm:space-y-5 transition-all">
+          <div className="bg-white/95 rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:p-7 border border-slate-200/85 shadow-xs space-y-4 sm:space-y-5">
             {/* Top Row: Title & Action Buttons */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
               <div>
@@ -810,40 +820,55 @@ export default function CustomersPage() {
                 )}
               </div>
 
-              {/* View mode toggle - segmented control */}
-              <div className="inline-flex items-center p-1.5 bg-slate-100/80 backdrop-blur-md rounded-2xl border border-slate-200/80 self-start md:self-auto overflow-x-auto max-w-full font-['Calibri'] text-[11pt]">
+              {/* View mode toggle - GPU spring-animated segmented control */}
+              <div className="relative grid grid-cols-3 items-center p-1 bg-slate-200/65 rounded-2xl border border-slate-200/85 shadow-inner self-stretch md:self-auto min-w-0 sm:min-w-[430px] font-['Calibri'] text-[11pt]">
+                <div
+                  aria-hidden="true"
+                  style={{
+                    transform:
+                      viewMode === 'folders'
+                        ? 'translate3d(0%, 0, 0)'
+                        : viewMode === 'table'
+                        ? 'translate3d(100%, 0, 0)'
+                        : 'translate3d(200%, 0, 0)',
+                  }}
+                  className="glass-segmented-thumb pointer-events-none absolute top-1 bottom-1 left-1 w-[calc((100%-8px)/3)] rounded-xl bg-white shadow-xs border border-slate-200/70"
+                />
                 <button
                   type="button"
                   onClick={() => {
                     setViewMode('folders');
                     setSelectedFolder(null);
                   }}
-                  className={`inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-[11pt] font-bold transition-all cursor-pointer shrink-0 ${viewMode === 'folders' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                  className={`relative z-10 inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-xl text-xs sm:text-[11pt] font-bold transition-colors duration-200 cursor-pointer whitespace-nowrap select-none ${
+                    viewMode === 'folders' ? 'text-blue-700' : 'text-slate-600 hover:text-slate-900'
+                  }`}
                   title="Apple Glassmorphism Folder Grid"
                 >
-                  <Folder className="w-4 h-4" />
-                  <span>Company Folders</span>
+                  <Folder className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Company Folders</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
-                  className={`inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-[11pt] font-bold transition-all cursor-pointer shrink-0 ${viewMode === 'table' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                  className={`relative z-10 inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-xl text-xs sm:text-[11pt] font-bold transition-colors duration-200 cursor-pointer whitespace-nowrap select-none ${
+                    viewMode === 'table' ? 'text-blue-700' : 'text-slate-600 hover:text-slate-900'
+                  }`}
                   title="Spreadsheet Table View"
                 >
-                  <TableIcon className="w-4 h-4" />
-                  <span>Editable Table</span>
+                  <TableIcon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Editable Table</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('cards')}
-                  className={`inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-[11pt] font-bold transition-all cursor-pointer shrink-0 ${viewMode === 'cards' ? 'bg-white text-blue-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                  className={`relative z-10 inline-flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-xl text-xs sm:text-[11pt] font-bold transition-colors duration-200 cursor-pointer whitespace-nowrap select-none ${
+                    viewMode === 'cards' ? 'text-blue-700' : 'text-slate-600 hover:text-slate-900'
+                  }`}
                   title="Card Grid View"
                 >
-                  <LayoutGrid className="w-4 h-4" />
-                  <span>Card Grid</span>
+                  <LayoutGrid className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Card Grid</span>
                 </button>
               </div>
             </div>
@@ -991,7 +1016,7 @@ export default function CustomersPage() {
 
           {/* VIEW MODE 1 (Drilled Down): Inside a Selected Company Folder */}
           {viewMode === 'folders' && selectedFolder && (
-            <div className="bg-white/95 backdrop-blur-2xl rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-[0_12px_40px_rgba(15,23,42,0.06)] space-y-6 animate-in fade-in duration-200 w-full font-['Calibri'] text-[11pt]">
+            <div className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-6 md:p-8 shadow-[0_8px_30px_rgba(15,23,42,0.05)] space-y-5 sm:space-y-6 w-full font-['Calibri'] text-[11pt]">
               {/* Breadcrumb Navigation & Top Action */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
                 <div className="flex items-center gap-3.5">
@@ -1215,29 +1240,29 @@ export default function CustomersPage() {
                   </div>
 
                   {/* AUTOMATED RESPONSIVE VIEW 2: Monitor / Desktop Spacious Pure White Glassmorphism Table */}
-                  <div className="hidden md:block overflow-x-auto glass-box-white rounded-3xl border-1.5 border-slate-200/90 shadow-[0_12px_40px_rgba(15,23,42,0.06)] font-['Calibri'] text-[11pt]">
+                  <div className="hidden md:block overflow-x-auto smooth-table-scroll glass-box-white rounded-3xl border border-slate-200/90 shadow-[0_6px_24px_rgba(15,23,42,0.05)] font-['Calibri'] text-[11pt]">
                     <table className="w-full text-left font-['Calibri'] text-[11pt] border-collapse">
-                      <thead className="bg-slate-50/90 text-slate-700 font-bold uppercase text-[10.5pt] tracking-wider border-b border-slate-200/90 backdrop-blur-md">
+                      <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10.5pt] tracking-wider border-b border-slate-200">
                         <tr>
-                          <th className="py-4 px-3 text-center w-14">#</th>
-                          <th className="py-4 px-3 w-36 min-w-[130px]">Store Code</th>
-                          <th className="py-4 px-3 w-56 min-w-[200px]">Store / Branch Name</th>
-                          <th className="py-4 px-3 w-44 min-w-[160px]">GSTIN</th>
-                          <th className="py-4 px-3 min-w-[340px]">Billing Address</th>
-                          <th className="py-4 px-3 w-40 min-w-[140px]">Contact Person</th>
-                          <th className="py-4 px-3 w-36 min-w-[130px]">Phone</th>
-                          {/* PINNED STICKY ACTIONS COLUMN - MODERN GLASSMORPHISM BOX WITH PURE WHITE ANIMATION */}
-                          <th className="py-4 px-4 text-center w-40 min-w-[150px] sticky right-0 bg-slate-50/95 backdrop-blur-md shadow-[-6px_0_16px_rgba(15,23,42,0.06)] border-l border-slate-200/90 z-20">
+                          <th className="py-3.5 px-2.5 text-center w-12">#</th>
+                          <th className="py-3.5 px-2.5 w-28 min-w-[105px]">Store Code</th>
+                          <th className="py-3.5 px-2.5 w-48 min-w-[180px]">Store / Branch Name</th>
+                          <th className="py-3.5 px-2.5 w-40 min-w-[155px]">GSTIN</th>
+                          <th className="py-3.5 px-2.5 min-w-[260px]">Billing Address</th>
+                          <th className="py-3.5 px-2.5 w-36 min-w-[130px]">Contact Person</th>
+                          <th className="py-3.5 px-2.5 w-32 min-w-[120px]">Phone</th>
+                          {/* PINNED STICKY ACTIONS COLUMN - GPU COMPOSITED CRISP WHITE */}
+                          <th className="py-3.5 px-3 text-center w-36 min-w-[136px] sticky right-0 bg-slate-50 shadow-[-6px_0_14px_rgba(15,23,42,0.05)] border-l border-slate-200 z-20">
                             Actions
                           </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100/90 font-normal">
                         {activeFolderUnits.map((u, idx) => (
-                          <tr key={u.id} className="hover:bg-blue-50/20 transition-colors group">
+                          <tr key={u.id} className="hover:bg-[#F5F9FF] transition-colors duration-100 group">
                             {/* # and Quick Delete Button */}
-                            <td className="py-3 px-3 text-center font-bold text-slate-400">
-                              <div className="flex items-center justify-center gap-1.5">
+                            <td className="py-2.5 px-2.5 text-center font-bold text-slate-400">
+                              <div className="flex items-center justify-center gap-1">
                                 <span>{idx + 1}</span>
                                 <button
                                   type="button"
@@ -1250,18 +1275,18 @@ export default function CustomersPage() {
                               </div>
                             </td>
                             {/* Store Code Box */}
-                            <td className="py-3 px-2.5">
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 value={u.store_code || ''}
                                 onChange={(e) => handleInlineChange(u.id, 'store_code', e.target.value.toUpperCase())}
                                 onBlur={() => handleBlur(u.id)}
                                 placeholder="e.g. 1903"
-                                className="w-full bg-amber-50/70 hover:bg-amber-50 focus:bg-white border-1.5 border-amber-300 focus:border-amber-500 rounded-2xl py-2.5 px-3 text-[11pt] font-mono font-bold text-blue-700 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-amber-500/20 transition-all"
+                                className="w-full bg-amber-50/70 hover:bg-amber-50 focus:bg-white border border-amber-300 focus:border-amber-500 rounded-2xl py-2 px-2.5 text-[11pt] font-mono font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-colors duration-150"
                               />
                             </td>
                             {/* Store / Branch Name Box */}
-                            <td className="py-3 px-2.5">
+                            <td className="py-2.5 px-2">
                               <div className="flex items-center gap-1.5">
                                 <input
                                   type="text"
@@ -1269,7 +1294,7 @@ export default function CustomersPage() {
                                   onChange={(e) => handleInlineChange(u.id, 'trade_name', e.target.value)}
                                   onBlur={() => handleBlur(u.id)}
                                   placeholder="e.g. Prozone Mall"
-                                  className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3.5 text-[11pt] font-bold text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                  className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-3 text-[11pt] font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                                 />
                                 <button
                                   type="button"
@@ -1282,51 +1307,51 @@ export default function CustomersPage() {
                               </div>
                             </td>
                             {/* GSTIN Box */}
-                            <td className="py-3 px-2.5">
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 value={u.gstin || ''}
                                 onChange={(e) => handleInlineChange(u.id, 'gstin', e.target.value.toUpperCase())}
                                 onBlur={() => handleBlur(u.id)}
                                 placeholder="GSTIN"
-                                className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3.5 text-[11pt] font-mono font-semibold text-slate-800 uppercase shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-3 text-[11pt] font-mono font-semibold text-slate-800 uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                               />
                             </td>
-                            {/* Expanded & Comfortable Billing Address: Full width, visible, never cramped */}
-                            <td className="py-3 px-2.5">
+                            {/* Expanded & Comfortable Billing Address */}
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 value={u.billing_address || ''}
                                 onChange={(e) => handleInlineChange(u.id, 'billing_address', e.target.value)}
                                 onBlur={() => handleBlur(u.id)}
                                 title={u.billing_address || ''}
-                                className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3.5 text-[11pt] text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-3 text-[11pt] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                               />
                             </td>
                             {/* Contact Person Box */}
-                            <td className="py-3 px-2.5">
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 value={u.contact_person || ''}
                                 onChange={(e) => handleInlineChange(u.id, 'contact_person', e.target.value)}
                                 onBlur={() => handleBlur(u.id)}
                                 placeholder="Contact..."
-                                className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3 text-[11pt] text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-2.5 text-[11pt] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                               />
                             </td>
                             {/* Phone Box */}
-                            <td className="py-3 px-2.5">
+                            <td className="py-2.5 px-2">
                               <input
                                 type="text"
                                 value={u.phone || ''}
                                 onChange={(e) => handleInlineChange(u.id, 'phone', e.target.value)}
                                 onBlur={() => handleBlur(u.id)}
                                 placeholder="Phone..."
-                                className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3 text-[11pt] font-mono text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-2.5 text-[11pt] font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                               />
                             </td>
-                            {/* PINNED STICKY ACTIONS COLUMN - MODERN GLASSMORPHISM BOX WITH PURE WHITE ANIMATION */}
-                            <td className="py-2.5 px-3 text-center sticky right-0 bg-white/95 backdrop-blur-md shadow-[-6px_0_16px_rgba(15,23,42,0.06)] border-l border-slate-200/90 z-20">
+                            {/* PINNED STICKY ACTIONS COLUMN - GPU COMPOSITED CRISP WHITE */}
+                            <td className="py-2 px-2.5 text-center sticky right-0 bg-white group-hover:bg-[#F5F9FF] shadow-[-6px_0_14px_rgba(15,23,42,0.05)] border-l border-slate-200/90 z-10 transition-colors duration-100">
                               <div className="glass-action-box">
                                 <button
                                   type="button"
@@ -1552,20 +1577,20 @@ export default function CustomersPage() {
                   </div>
 
                   {/* AUTOMATED RESPONSIVE VIEW 2: Monitor / Desktop Spacious Pure White Glassmorphism Table */}
-                  <div className="hidden md:block overflow-x-auto glass-box-white rounded-3xl border-1.5 border-slate-200/90 shadow-[0_12px_40px_rgba(15,23,42,0.06)] font-['Calibri'] text-[11pt]">
+                  <div className="hidden md:block overflow-x-auto smooth-table-scroll glass-box-white rounded-3xl border border-slate-200/90 shadow-[0_6px_24px_rgba(15,23,42,0.05)] font-['Calibri'] text-[11pt]">
                     <table className="w-full text-left font-['Calibri'] text-[11pt] border-collapse">
-                      <thead className="bg-slate-50/90 text-slate-700 font-bold uppercase text-[10.5pt] tracking-wider border-b border-slate-200/90 backdrop-blur-md">
+                      <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10.5pt] tracking-wider border-b border-slate-200">
                         <tr>
-                          <th className="py-4 px-3 text-center w-14">No.</th>
-                          <th className="py-4 px-3 w-56 min-w-[210px]">Client / Company Legal Name</th>
-                          <th className="py-4 px-3 w-36 min-w-[140px]">Store Code</th>
-                          <th className="py-4 px-3 w-52 min-w-[190px]">Store / Trade Name</th>
-                          <th className="py-4 px-3 w-44 min-w-[160px]">GSTIN</th>
-                          <th className="py-4 px-3 min-w-[340px]">Billing Address</th>
-                          <th className="py-4 px-3 w-40 min-w-[140px]">Contact Person</th>
-                          <th className="py-4 px-3 w-36 min-w-[130px]">Phone</th>
-                          {/* PINNED STICKY ACTIONS COLUMN - MODERN GLASSMORPHISM BOX WITH PURE WHITE ANIMATION */}
-                          <th className="py-4 px-4 text-center w-40 min-w-[150px] sticky right-0 bg-slate-50/95 backdrop-blur-md shadow-[-6px_0_16px_rgba(15,23,42,0.06)] border-l border-slate-200/90 z-20">
+                          <th className="py-3.5 px-2.5 text-center w-12">No.</th>
+                          <th className="py-3.5 px-2.5 w-48 min-w-[185px]">Client / Company Legal Name</th>
+                          <th className="py-3.5 px-2.5 w-28 min-w-[105px]">Store Code</th>
+                          <th className="py-3.5 px-2.5 w-44 min-w-[170px]">Store / Trade Name</th>
+                          <th className="py-3.5 px-2.5 w-40 min-w-[155px]">GSTIN</th>
+                          <th className="py-3.5 px-2.5 min-w-[260px]">Billing Address</th>
+                          <th className="py-3.5 px-2.5 w-36 min-w-[130px]">Contact Person</th>
+                          <th className="py-3.5 px-2.5 w-32 min-w-[120px]">Phone</th>
+                          {/* PINNED STICKY ACTIONS COLUMN - GPU COMPOSITED CRISP WHITE */}
+                          <th className="py-3.5 px-3 text-center w-36 min-w-[136px] sticky right-0 bg-slate-50 shadow-[-6px_0_14px_rgba(15,23,42,0.05)] border-l border-slate-200 z-20">
                             Actions
                           </th>
                         </tr>
@@ -1576,11 +1601,11 @@ export default function CustomersPage() {
                           return (
                             <tr
                               key={c.id}
-                              className="hover:bg-blue-50/20 transition-colors group relative"
+                              className="hover:bg-[#F5F9FF] transition-colors duration-100 group relative"
                             >
                               {/* Col 1: No., Quick Delete & Save Indicator */}
-                              <td className="py-3 px-3 text-center text-[11pt] font-semibold text-slate-400 relative">
-                                <div className="flex items-center justify-center gap-1.5">
+                              <td className="py-2.5 px-2.5 text-center text-[11pt] font-semibold text-slate-400 relative">
+                                <div className="flex items-center justify-center gap-1">
                                   {status?.state === 'saved' ? (
                                     <span
                                       title={`Saved in ${status.ms || '0ms'}`}
@@ -1605,90 +1630,90 @@ export default function CustomersPage() {
                               </td>
 
                               {/* Col 2: Company Legal Name */}
-                              <td className="py-3 px-2.5">
+                              <td className="py-2.5 px-2">
                                 <input
                                   type="text"
                                   value={c.company_name || ''}
                                   onChange={(e) => handleInlineChange(c.id, 'company_name', e.target.value)}
                                   onBlur={() => handleBlur(c.id)}
-                                  className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3.5 text-[11pt] font-bold text-slate-900 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                  className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-3 text-[11pt] font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                                 />
                               </td>
 
                               {/* Col 3: Store Code (Optional) */}
-                              <td className="py-3 px-2.5">
+                              <td className="py-2.5 px-2">
                                 <input
                                   type="text"
                                   value={c.store_code || ''}
                                   onChange={(e) => handleInlineChange(c.id, 'store_code', e.target.value.toUpperCase())}
                                   onBlur={() => handleBlur(c.id)}
                                   placeholder="e.g. 1903"
-                                  className="w-full bg-amber-50/70 hover:bg-amber-50 focus:bg-white border-1.5 border-amber-300 focus:border-amber-500 rounded-2xl py-2.5 px-3 text-[11pt] font-mono font-bold text-blue-700 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-amber-500/20 transition-all"
+                                  className="w-full bg-amber-50/70 hover:bg-amber-50 focus:bg-white border border-amber-300 focus:border-amber-500 rounded-2xl py-2 px-2.5 text-[11pt] font-mono font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-colors duration-150"
                                 />
                               </td>
 
                               {/* Col 4: Store / Trade Name */}
-                              <td className="py-3 px-2.5">
+                              <td className="py-2.5 px-2">
                                 <input
                                   type="text"
                                   value={c.trade_name || ''}
                                   onChange={(e) => handleInlineChange(c.id, 'trade_name', e.target.value)}
                                   onBlur={() => handleBlur(c.id)}
                                   placeholder="e.g. Prozone Mall"
-                                  className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3.5 text-[11pt] font-bold text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                  className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-3 text-[11pt] font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                                 />
                               </td>
 
                               {/* Col 5: GSTIN */}
-                              <td className="py-3 px-2.5">
+                              <td className="py-2.5 px-2">
                                 <input
                                   type="text"
                                   value={c.gstin || ''}
                                   onChange={(e) => handleInlineChange(c.id, 'gstin', e.target.value.toUpperCase())}
                                   onBlur={() => handleBlur(c.id)}
                                   placeholder="33AAACL2937J1ZL"
-                                  className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3.5 text-[11pt] font-mono font-semibold text-slate-800 uppercase shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                  className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-3 text-[11pt] font-mono font-semibold text-slate-800 uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                                 />
                               </td>
 
                               {/* Col 6: Billing Address - EXPANDED & COMFORTABLE */}
-                              <td className="py-3 px-2.5">
+                              <td className="py-2.5 px-2">
                                 <input
                                   type="text"
                                   value={c.billing_address || ''}
                                   onChange={(e) => handleInlineChange(c.id, 'billing_address', e.target.value)}
                                   onBlur={() => handleBlur(c.id)}
                                   title={c.billing_address || ''}
-                                  className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3.5 text-[11pt] text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                  className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-3 text-[11pt] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                                 />
                               </td>
 
                               {/* Col 7: Contact Person */}
-                              <td className="py-3 px-2.5">
+                              <td className="py-2.5 px-2">
                                 <input
                                   type="text"
                                   value={c.contact_person || ''}
                                   onChange={(e) => handleInlineChange(c.id, 'contact_person', e.target.value)}
                                   onBlur={() => handleBlur(c.id)}
                                   placeholder="Contact..."
-                                  className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3 text-[11pt] text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                  className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-2.5 text-[11pt] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                                 />
                               </td>
 
                               {/* Col 8: Phone */}
-                              <td className="py-3 px-2.5">
+                              <td className="py-2.5 px-2">
                                 <input
                                   type="text"
                                   value={c.phone || ''}
                                   onChange={(e) => handleInlineChange(c.id, 'phone', e.target.value)}
                                   onBlur={() => handleBlur(c.id)}
                                   placeholder="Phone..."
-                                  className="w-full bg-white hover:bg-white focus:bg-white border-1.5 border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2.5 px-3 text-[11pt] font-mono text-slate-800 shadow-[0_2px_6px_rgba(15,23,42,0.05)] focus:ring-4 focus:ring-blue-500/15 transition-all"
+                                  className="w-full bg-white border border-slate-300 hover:border-slate-400 focus:border-blue-600 rounded-2xl py-2 px-2.5 text-[11pt] font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/15 transition-colors duration-150"
                                 />
                               </td>
 
-                              {/* Col 9: PINNED STICKY QUICK ACTIONS - MODERN GLASSMORPHISM BOX WITH PURE WHITE ANIMATION */}
-                              <td className="py-2.5 px-3 text-center whitespace-nowrap sticky right-0 bg-white/95 backdrop-blur-md shadow-[-6px_0_16px_rgba(15,23,42,0.06)] border-l border-slate-200/90 z-20">
+                              {/* Col 9: PINNED STICKY QUICK ACTIONS - GPU COMPOSITED CRISP WHITE */}
+                              <td className="py-2 px-2.5 text-center whitespace-nowrap sticky right-0 bg-white group-hover:bg-[#F5F9FF] shadow-[-6px_0_14px_rgba(15,23,42,0.05)] border-l border-slate-200/90 z-10 transition-colors duration-100">
                                 <div className="glass-action-box">
                                   <button
                                     type="button"

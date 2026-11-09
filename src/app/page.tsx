@@ -123,23 +123,23 @@ export default function DashboardPage() {
   const draftQuotes = quotations.filter((q) => q.status === 'draft');
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFF]">
+    <div className="flex h-dvh overflow-hidden bg-[#F8FAFF]">
       {/* Translucent Glass Sidebar */}
       <AppSidebar />
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden smooth-scroll-pane">
         <AppHeader
           title="Dashboard"
           subtitle="JPA Rate Card Organiser"
           onOpenAiImport={() => setIsAiModalOpen(true)}
         />
 
-        <main className="p-6 md:p-8 max-w-7xl mx-auto w-full space-y-8">
+        <main className="p-3.5 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6 md:space-y-8">
           {/* Welcome Banner */}
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white p-8 shadow-xl">
+          <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-r from-blue-900 via-blue-800 to-indigo-900 text-white p-5 sm:p-7 md:p-8 shadow-xl">
             {/* Geometric watermark accent in refined grayscale origami depth */}
-            <div className="absolute right-0 bottom-0 translate-x-10 translate-y-10 opacity-20 pointer-events-none w-80 h-80">
+            <div className="absolute right-0 bottom-0 translate-x-8 translate-y-8 opacity-20 pointer-events-none w-52 h-52 sm:w-80 sm:h-80">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="285 94 850 862" className="w-full h-full">
                 <path fill="#CBD5E1" opacity="0.6" d="M 1015,488 L 731,883 L 739,852 L 837,557 L 722,461 L 721,896 L 1075,612 Z" />
                 <path fill="#94A3B8" opacity="0.75" d="M 485,398 L 405,453 L 670,839 L 528,570 L 528,567 L 553,541 Z" />
@@ -149,117 +149,117 @@ export default function DashboardPage() {
               </svg>
             </div>
 
-            <div className="relative z-10 max-w-2xl space-y-3.5">
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+            <div className="relative z-10 max-w-2xl space-y-3 sm:space-y-3.5">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight">
                 Welcome to JPA QUOTE
               </h1>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5 sm:gap-3 pt-1">
                 <Link
                   href="/quotations/new"
-                  className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-white text-blue-900 font-bold text-sm shadow-md hover:bg-blue-50 transition-all cursor-pointer min-h-[42px]"
+                  className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4.5 py-2.5 rounded-xl bg-white text-blue-900 font-bold text-xs sm:text-sm shadow-md hover:bg-blue-50 active:scale-95 transition-all duration-200 cursor-pointer min-h-[42px] whitespace-nowrap"
                 >
-                  <FilePlus2 className="w-4.5 h-4.5 text-blue-600" />
+                  <FilePlus2 className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-blue-600 shrink-0" />
                   <span>Create Rate Card</span>
                 </Link>
 
                 <button
                   type="button"
                   onClick={() => setIsAiModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-blue-700/80 hover:bg-blue-700 text-white font-semibold text-sm border border-blue-500/40 backdrop-blur-md transition-all cursor-pointer min-h-[42px]"
+                  className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4.5 py-2.5 rounded-xl bg-blue-700/80 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm border border-blue-400/40 backdrop-blur-md active:scale-95 transition-all duration-200 cursor-pointer min-h-[42px] whitespace-nowrap"
                 >
-                  <Sparkles className="w-4.5 h-4.5 text-amber-300" />
+                  <Sparkles className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-amber-300 shrink-0" />
                   <span>Import</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Metric Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* Metric Cards Bento Grid (2x2 on Mobile, 4-Column on Desktop) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
             {/* Metric 1 */}
-            <div className="glass-panel glass-panel-hover rounded-2xl p-5 sm:p-6 border border-white/80">
-              <div className="flex items-center justify-between text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">
-                <span>Total Quotations</span>
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <FileText className="w-5 h-5" />
+            <div className="glass-panel glass-panel-hover rounded-2xl p-3.5 sm:p-5 md:p-6 border border-white/80 flex flex-col justify-between min-w-0">
+              <div className="flex items-start sm:items-center justify-between gap-2 text-slate-500 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider mb-2">
+                <span className="leading-tight">Total Quotations</span>
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="text-3xl font-extrabold text-slate-900">
+              <div className="text-xl sm:text-2xl xl:text-3xl font-extrabold text-slate-900 tracking-tight">
                 {quotations.length}
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-500 mt-2 font-medium">
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] sm:text-sm text-slate-500 mt-1.5 sm:mt-2 font-medium">
                 <span className="text-emerald-600 font-bold">{approvedQuotes.length} approved</span>
                 <span>• {draftQuotes.length} drafts</span>
               </div>
             </div>
 
             {/* Metric 2 */}
-            <div className="glass-panel glass-panel-hover rounded-2xl p-5 sm:p-6 border border-white/80">
-              <div className="flex items-center justify-between text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">
-                <span>Quoted Value</span>
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5" />
+            <div className="glass-panel glass-panel-hover rounded-2xl p-3.5 sm:p-5 md:p-6 border border-white/80 flex flex-col justify-between min-w-0">
+              <div className="flex items-start sm:items-center justify-between gap-2 text-slate-500 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider mb-2">
+                <span className="leading-tight">Quoted Value</span>
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="text-3xl font-extrabold text-slate-900">
+              <div className="text-lg sm:text-2xl xl:text-3xl font-extrabold text-slate-900 tracking-tight truncate">
                 {formatINR(totalValue)}
               </div>
-              <div className="text-sm text-slate-500 mt-2 font-medium">
-                Consolidated quoted portfolio
+              <div className="text-[11px] sm:text-sm text-slate-500 mt-1.5 sm:mt-2 font-medium truncate">
+                Consolidated portfolio
               </div>
             </div>
 
             {/* Metric 3 */}
-            <div className="glass-panel glass-panel-hover rounded-2xl p-5 sm:p-6 border border-white/80">
-              <div className="flex items-center justify-between text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">
-                <span>Rate Library Memory</span>
-                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <Database className="w-5 h-5" />
+            <div className="glass-panel glass-panel-hover rounded-2xl p-3.5 sm:p-5 md:p-6 border border-white/80 flex flex-col justify-between min-w-0">
+              <div className="flex items-start sm:items-center justify-between gap-2 text-slate-500 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider mb-2">
+                <span className="leading-tight">Rate Memory</span>
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                  <Database className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="text-3xl font-extrabold text-slate-900">
+              <div className="text-xl sm:text-2xl xl:text-3xl font-extrabold text-slate-900 tracking-tight truncate">
                 {totalRates || products.length} Items
               </div>
-              <div className="flex items-center gap-1.5 text-sm text-emerald-600 font-semibold mt-2">
-                <Zap className="w-4 h-4" />
-                <span>Silent auto-reuse active</span>
+              <div className="flex items-center gap-1 text-[11px] sm:text-sm text-emerald-600 font-semibold mt-1.5 sm:mt-2 truncate">
+                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="truncate">Auto-reuse active</span>
               </div>
             </div>
 
             {/* Metric 4 */}
-            <div className="glass-panel glass-panel-hover rounded-2xl p-5 sm:p-6 border border-white/80">
-              <div className="flex items-center justify-between text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">
-                <span>Supplier Profile</span>
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <Building2 className="w-5 h-5" />
+            <div className="glass-panel glass-panel-hover rounded-2xl p-3.5 sm:p-5 md:p-6 border border-white/80 flex flex-col justify-between min-w-0">
+              <div className="flex items-start sm:items-center justify-between gap-2 text-slate-500 text-[10.5px] sm:text-xs font-bold uppercase tracking-wider mb-2">
+                <span className="leading-tight">Supplier Profile</span>
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                  <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
               </div>
-              <div className="text-base font-bold text-slate-900 truncate">
+              <div className="text-sm sm:text-base font-bold text-slate-900 truncate">
                 Jeevan Pranav Agencies
               </div>
-              <div className="text-sm text-slate-500 mt-2 font-medium truncate">
-                GSTIN: 33BRGPM1867B1Z1 (Verified)
+              <div className="text-[11px] sm:text-sm text-slate-500 mt-1.5 sm:mt-2 font-medium truncate">
+                GSTIN: 33BRGPM1867B1Z1
               </div>
             </div>
           </div>
 
           {/* Quotations & Rate Memory Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8">
             {/* Recent Quotations (Left 7 Cols) */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">
+            <div className="lg:col-span-7 space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-xl font-bold text-slate-900">
                     Recent Quotations
                   </h2>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-xs sm:text-sm text-slate-500 truncate">
                     Manage, edit, export, and duplicate JPA client quotations
                   </p>
                 </div>
                 <Link
                   href="/quotations"
-                  className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  className="text-xs sm:text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-0.5 shrink-0"
                 >
                   <span>View All</span>
                   <ChevronRight className="w-4 h-4" />
@@ -276,15 +276,15 @@ export default function DashboardPage() {
                     {quotations.slice(0, 5).map((q) => (
                       <div
                         key={q.id}
-                        className="p-4 sm:p-5 hover:bg-slate-50/70 transition-colors flex items-center justify-between gap-4"
+                        className="p-3.5 sm:p-5 hover:bg-slate-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-sm text-blue-700 font-mono">
+                            <span className="font-bold text-xs sm:text-sm text-blue-700 font-mono">
                               {q.quote_number}
                             </span>
                             <span
-                              className={`text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                              className={`text-[10.5px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                                 q.status === 'approved'
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                   : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -293,34 +293,34 @@ export default function DashboardPage() {
                               {q.status}
                             </span>
                           </div>
-                          <div className="text-base font-bold text-slate-900 truncate">
+                          <div className="text-sm sm:text-base font-bold text-slate-900 truncate">
                             {q.customer_name}
                           </div>
                           {q.store_name && (
-                            <div className="text-sm text-slate-600 truncate">
+                            <div className="text-xs sm:text-sm text-slate-600 truncate">
                               Store: {q.store_name}
                             </div>
                           )}
-                          <div className="text-sm text-slate-500 mt-0.5">
+                          <div className="text-xs sm:text-sm text-slate-500 mt-0.5">
                             Dated: {q.quote_date} • {q.item_count || 6} items
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0 space-y-2">
+                        <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center shrink-0 gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100/80">
                           <div className="text-base sm:text-lg font-black text-slate-900 font-mono">
                             {formatINR(q.grand_total)}
                           </div>
                           <div className="flex items-center justify-end gap-1.5">
                             <Link
                               href={`/quotations/${q.id}`}
-                              className="px-3 py-1.5 rounded-xl text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs min-h-[38px] inline-flex items-center"
+                              className="px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-95 transition-all shadow-2xs min-h-[36px] inline-flex items-center"
                             >
                               View / Edit
                             </Link>
                             <a
                               href={`/api/quotations/${q.id}/pdf`}
                               title="Download PDF"
-                              className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors min-h-[38px] min-w-[38px] inline-flex items-center justify-center border border-transparent hover:border-blue-200"
+                              className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 active:scale-95 transition-all min-h-[36px] min-w-[36px] inline-flex items-center justify-center border border-slate-200/70 sm:border-transparent hover:border-blue-200"
                             >
                               <Download className="w-4 h-4" />
                             </a>
@@ -334,26 +334,26 @@ export default function DashboardPage() {
             </div>
 
             {/* Rate Library Spotlight (Right 5 Cols) */}
-            <div className="lg:col-span-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">
+            <div className="lg:col-span-5 space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-xl font-bold text-slate-900">
                     Rate Memory Spotlight
                   </h2>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-xs sm:text-sm text-slate-500 truncate">
                     Verified catalog rates remembered across quotations
                   </p>
                 </div>
                 <Link
                   href="/products"
-                  className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  className="text-xs sm:text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-0.5 shrink-0"
                 >
                   <span>Rate Library</span>
                   <ChevronRight className="w-4 h-4" />
                 </Link>
               </div>
 
-              <div className="glass-panel rounded-2xl border border-white/80 p-5 shadow-xs">
+              <div className="glass-panel rounded-2xl border border-white/80 p-4 sm:p-5 shadow-xs">
                 <div className="divide-y divide-slate-100">
                   {spotlightRates.length === 0 ? (
                     <div className="py-8 text-center text-slate-400 text-sm">
@@ -363,13 +363,13 @@ export default function DashboardPage() {
                     spotlightRates.slice(0, 5).map((p) => (
                       <div
                         key={p.id}
-                        className="py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 px-1 rounded-lg transition-colors"
+                        className="py-2.5 sm:py-3 flex items-center justify-between gap-3 hover:bg-slate-50/60 px-1.5 rounded-xl transition-colors"
                       >
                         <div className="min-w-0">
-                          <div className="text-base font-bold text-slate-800 truncate">
+                          <div className="text-sm sm:text-base font-bold text-slate-800 truncate">
                             {p.description}
                           </div>
-                          <div className="text-sm text-slate-500">
+                          <div className="text-xs sm:text-sm text-slate-500 truncate">
                             {p.specification ? `${p.specification} • ` : ''}
                             {p.pack ? `${p.pack} • ` : ''}
                             {p.unit}
@@ -377,10 +377,10 @@ export default function DashboardPage() {
                         </div>
 
                         <div className="text-right shrink-0">
-                          <div className="text-base sm:text-lg font-black text-blue-700 font-mono">
+                          <div className="text-sm sm:text-lg font-black text-blue-700 font-mono">
                             ₹{Number(p.default_rate).toFixed(2)}
                           </div>
-                          <div className="text-xs sm:text-sm text-slate-500 font-medium">
+                          <div className="text-[11px] sm:text-xs text-slate-500 font-medium">
                             GST {p.default_gst_rate}%
                           </div>
                         </div>

@@ -128,7 +128,7 @@ export async function GET(
         address: String(supplier.address || '16-P, Sakthi Illam, Gandhi Nagar, Mettuthottam, Podanur, Coimbatore - 641023'),
         gstin: String(supplier.gstin || '33BRGPM1867B1Z1'),
         phone: supplier.phone ? String(supplier.phone) : '9790600971',
-        email: supplier.email ? String(supplier.email) : 'jeevanpranavagencies@gmail.com / jmjp77@gmail.com',
+        email: supplier.email ? String(supplier.email) : 'jeevanpranavagencies@gmail.com',
         website: supplier.website ? String(supplier.website) : 'https://www.jeevanpranavagencies.com/',
         signatoryName: supplier.signatory_name ? String(supplier.signatory_name) : 'Mr. N JAYAKUMAR',
         signatoryDesignation: supplier.signatory_designation ? String(supplier.signatory_designation) : 'Proprietor / Authorised Signatory',

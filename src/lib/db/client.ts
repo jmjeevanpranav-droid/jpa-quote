@@ -3,13 +3,18 @@ import path from 'path';
 import fs from 'fs';
 
 let clientInstance: Client | null = null;
+let activeDbDir: string | null = null;
+
+export function getDbKey(): string {
+  return path.resolve(process.env.JPA_DATA_DIR || path.join(process.cwd(), 'data'));
+}
 
 export function getDb(): Client {
-  if (clientInstance) {
+  const dbDir = getDbKey();
+  if (clientInstance && activeDbDir === dbDir) {
     return clientInstance;
   }
 
-  const dbDir = process.env.JPA_DATA_DIR || path.join(process.cwd(), 'data');
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
@@ -18,6 +23,7 @@ export function getDb(): Client {
   clientInstance = createClient({
     url: `file:${dbPath.replace(/\\/g, '/')}`,
   });
+  activeDbDir = dbDir;
 
   return clientInstance;
 }

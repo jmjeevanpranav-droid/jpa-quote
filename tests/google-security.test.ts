@@ -1,3 +1,8 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+process.env.JPA_DATA_DIR = mkdtempSync(join(tmpdir(), 'jpa-test-google-sec-'));
+
 import test, { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyRecaptchaToken } from '../src/lib/auth/recaptcha';

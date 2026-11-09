@@ -1,0 +1,18 @@
+{
+  "python.defaultInterpreterPath": "D:\\Projects\\JPA Quote Builder\\DeepSeek-OCR\\.venv\\Scripts\\python.exe",
+  "python.analysis.extraPaths": [
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/deepencoder",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/process",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-hf"
+  ],
+  "python.autoComplete.extraPaths": [
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/deepencoder",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/process",
+    "D:/Projects/JPA Quote Builder/DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-hf"
+  ]
+}
+

@@ -20,9 +20,54 @@ export interface TabSession {
 export const JPA_TAB_SESSION_KEY = 'jpa_tab_session';
 export const JPA_KNOWN_ACCOUNTS_KEY = 'jpa_known_accounts';
 export const JPA_CACHED_USER_KEY = 'jpa_cached_user';
+const JPA_CLEAN_EMAILS_V2_KEY = 'jpa_clean_emails_v2';
+const ADMIN_EMAIL = 'jeevanpranavagencies@gmail.com';
+
+function ensureCleanAdminStorage(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localStorage.getItem(JPA_CLEAN_EMAILS_V2_KEY) === '1') return;
+
+    const knownRaw = localStorage.getItem(JPA_KNOWN_ACCOUNTS_KEY);
+    if (knownRaw) {
+      const known = JSON.parse(knownRaw);
+      if (Array.isArray(known)) {
+        const onlyAdmin = known.filter(
+          (s: any) => s?.user?.email?.toLowerCase() === ADMIN_EMAIL
+        );
+        localStorage.setItem(JPA_KNOWN_ACCOUNTS_KEY, JSON.stringify(onlyAdmin));
+      }
+    }
+
+    const rememberEmail = localStorage.getItem('jpa_remember_email');
+    if (rememberEmail && rememberEmail.trim().toLowerCase() !== ADMIN_EMAIL) {
+      localStorage.removeItem('jpa_remember_email');
+      localStorage.removeItem('jpa_remember_me');
+    }
+
+    const cachedRaw = localStorage.getItem(JPA_CACHED_USER_KEY);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      if (cached?.email?.toLowerCase() !== ADMIN_EMAIL) {
+        localStorage.removeItem(JPA_CACHED_USER_KEY);
+      }
+    }
+
+    const tabRaw = sessionStorage.getItem(JPA_TAB_SESSION_KEY);
+    if (tabRaw) {
+      const tab = JSON.parse(tabRaw);
+      if (tab?.user?.email?.toLowerCase() !== ADMIN_EMAIL) {
+        sessionStorage.removeItem(JPA_TAB_SESSION_KEY);
+      }
+    }
+
+    localStorage.setItem(JPA_CLEAN_EMAILS_V2_KEY, '1');
+  } catch {}
+}
 
 export function getActiveTabSession(): TabSession | null {
   if (typeof window === 'undefined') return null;
+  ensureCleanAdminStorage();
 
   try {
     // 1. Check tab-isolated sessionStorage first
@@ -101,6 +146,7 @@ export function setActiveTabSession(session: TabSession): void {
 
 export function getKnownAccounts(): TabSession[] {
   if (typeof window === 'undefined') return [];
+  ensureCleanAdminStorage();
   try {
     const raw = localStorage.getItem(JPA_KNOWN_ACCOUNTS_KEY);
     if (raw) {

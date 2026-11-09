@@ -43,3 +43,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# PaddleX cache, local OCR models/venv, and uploads
+.paddlex/
+uploads/
+public/uploads/
+DeepSeek-OCR/
+*.safetensors
+*.pt
+*.pth
+*.onnx
+claude-code/

@@ -1,0 +1,35 @@
+python-interpreter-path = "DeepSeek-OCR/.venv/Scripts/python.exe"
+python-version = "3.11"
+
+search-path = [
+    "DeepSeek-OCR",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/deepencoder",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/process",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-hf",
+    "scripts",
+]
+
+site-package-path = [
+    "C:/Users/ADMIN/AppData/Local/Programs/Python/Python311/Lib/site-packages",
+]
+
+ignore-missing-imports = [
+    "pytesseract",
+]
+
+project-includes = [
+    "DeepSeek-OCR/*.py",
+    "DeepSeek-OCR/DeepSeek-OCR-master/**/*.py",
+    "scripts/**/*.py",
+]
+
+project-excludes = [
+    "**/node_modules",
+    "**/.next",
+    "**/.venv",
+    "**/__pycache__",
+    "DeepSeek-OCR/.cache",
+    "DeepSeek-OCR/.hf_cache",
+    "DeepSeek-OCR/models",
+]

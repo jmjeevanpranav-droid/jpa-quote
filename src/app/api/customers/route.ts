@@ -281,7 +281,8 @@ export async function DELETE(req: NextRequest) {
       await db.execute('DELETE FROM quotations');
       // 2. Clean product rates customer references
       await db.execute('DELETE FROM product_rates WHERE customer_id IS NOT NULL');
-      // 3. Delete stores and customers
+      // 3. Delete folders, stores, and customers
+      await db.execute('DELETE FROM company_folders');
       await db.execute('DELETE FROM customer_stores');
       await db.execute('DELETE FROM customers');
       return NextResponse.json({ success: true, message: 'All customers and quotations deleted successfully' });

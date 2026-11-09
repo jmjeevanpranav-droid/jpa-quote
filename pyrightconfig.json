@@ -1,0 +1,26 @@
+{
+  "venvPath": "DeepSeek-OCR",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "Windows",
+  "extraPaths": [
+    "DeepSeek-OCR",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/deepencoder",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-vllm/process",
+    "DeepSeek-OCR/DeepSeek-OCR-master/DeepSeek-OCR-hf",
+    "scripts",
+    "C:/Users/ADMIN/AppData/Local/Programs/Python/Python311/Lib/site-packages"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/.next",
+    "**/.venv",
+    "**/__pycache__",
+    "DeepSeek-OCR/.cache",
+    "DeepSeek-OCR/.hf_cache",
+    "DeepSeek-OCR/models"
+  ],
+  "reportMissingImports": "warning"
+}
+

@@ -15,7 +15,7 @@ import {
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
-import { updateActiveUserAvatar } from '@/lib/auth/client-context';
+import { updateActiveUserAvatar, getActiveTabSession } from '@/lib/auth/client-context';
 
 interface ProfilePhotoSetterModalProps {
   isOpen: boolean;
@@ -207,9 +207,16 @@ export function ProfilePhotoSetterModal({
       // Export as high-quality WebP with JPEG fallback
       const croppedDataUrl = exportCanvas.toDataURL('image/webp', 0.92);
 
+      const activeSession = typeof window !== 'undefined' ? getActiveTabSession() : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (activeSession?.token) {
+        headers['x-jpa-session-token'] = activeSession.token;
+        headers['Authorization'] = `Bearer ${activeSession.token}`;
+      }
+
       const res = await fetch('/api/user/avatar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           avatarUrl: croppedDataUrl,
           userId,
@@ -243,8 +250,14 @@ export function ProfilePhotoSetterModal({
     if (!confirm('Are you sure you want to remove this profile photo?')) return;
     setSaving(true);
     try {
+      const activeSession = typeof window !== 'undefined' ? getActiveTabSession() : null;
+      const headers: Record<string, string> = {};
+      if (activeSession?.token) {
+        headers['x-jpa-session-token'] = activeSession.token;
+        headers['Authorization'] = `Bearer ${activeSession.token}`;
+      }
       const url = userId ? `/api/user/avatar?userId=${encodeURIComponent(userId)}` : '/api/user/avatar';
-      const res = await fetch(url, { method: 'DELETE' });
+      const res = await fetch(url, { method: 'DELETE', headers });
       if (res.ok) {
         updateActiveUserAvatar(null);
         if (onAvatarUpdated) {

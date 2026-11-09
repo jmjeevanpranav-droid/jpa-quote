@@ -91,10 +91,10 @@ export default function AllQuotationsPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFF]">
+    <div className="flex h-dvh overflow-hidden bg-[#F8FAFF]">
       <AppSidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto smooth-scroll-pane">
         <AppHeader
           title="All Quotations"
         />
@@ -124,15 +124,27 @@ export default function AllQuotationsPage() {
             </form>
 
             <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 w-full lg:w-auto">
-              <div className="inline-flex flex-wrap items-center rounded-xl bg-slate-100 p-1 text-sm border border-slate-200/60 max-w-full">
+              <div className="relative grid grid-cols-3 items-center rounded-xl bg-slate-200/65 backdrop-blur-md p-1 text-xs sm:text-sm border border-white/85 shadow-inner min-w-[230px] sm:min-w-[260px]">
+                <div
+                  aria-hidden="true"
+                  style={{
+                    transform:
+                      statusFilter === 'all'
+                        ? 'translate3d(0%, 0, 0)'
+                        : statusFilter === 'approved'
+                        ? 'translate3d(100%, 0, 0)'
+                        : 'translate3d(200%, 0, 0)',
+                  }}
+                  className="glass-segmented-thumb pointer-events-none absolute top-1 bottom-1 left-1 w-[calc((100%-8px)/3)] rounded-lg bg-white shadow-xs border border-slate-200/70"
+                />
                 {['all', 'approved', 'draft'].map((st) => (
                   <button
                     key={st}
                     type="button"
                     onClick={() => setStatusFilter(st)}
-                    className={`px-3.5 py-1.5 rounded-lg font-bold capitalize transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 min-h-[38px] ${
+                    className={`relative z-10 px-2.5 sm:px-3.5 py-1.5 rounded-lg font-bold capitalize transition-colors duration-200 cursor-pointer whitespace-nowrap min-h-[36px] select-none ${
                       statusFilter === st
-                        ? 'bg-white text-blue-700 shadow-2xs scale-100'
+                        ? 'text-blue-700'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >

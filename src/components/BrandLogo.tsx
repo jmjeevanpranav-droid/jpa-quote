@@ -14,13 +14,22 @@ export function BrandLogo({
   className = '',
   isLink = true,
 }: BrandLogoProps) {
+  const isCompact = variant === 'compact';
+  const isIconOnly = variant === 'icon-only';
+
   const content = (
     <div
       suppressHydrationWarning
-      className={`flex items-center ${variant === 'icon-only' ? 'justify-center' : 'gap-3'} select-none ${className}`}
+      className={`flex items-center ${
+        isIconOnly ? 'justify-center' : isCompact ? 'gap-2' : 'gap-2.5'
+      } select-none ${className}`}
     >
       {/* Official JPA Origami Flame/Bird Emblem in Full Colour */}
-      <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/10 via-orange-500/15 to-blue-600/10 p-1.5 border border-amber-500/20 shadow-xs shrink-0 group-hover:scale-105 transition-transform duration-150">
+      <div
+        className={`relative flex items-center justify-center ${
+          isCompact || isIconOnly ? 'w-9 h-9 p-1.5 rounded-xl' : 'w-10 h-10 p-1.5 rounded-xl'
+        } bg-gradient-to-br from-amber-500/10 via-orange-500/15 to-blue-600/10 border border-amber-500/20 shadow-xs shrink-0 group-hover:scale-105 transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]`}
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="285 94 850 862"
@@ -34,10 +43,14 @@ export function BrandLogo({
         </svg>
       </div>
 
-      {variant !== 'icon-only' && (
-        <div className="flex flex-col leading-none">
+      {!isIconOnly && (
+        <div className="flex flex-col leading-none whitespace-nowrap">
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-xl tracking-tight text-black">
+            <span
+              className={`font-bold tracking-tight text-slate-950 ${
+                isCompact ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'
+              }`}
+            >
               JPA <span className="text-[#F47A20]">QUOTE</span>
             </span>
           </div>
@@ -48,7 +61,7 @@ export function BrandLogo({
 
   if (isLink) {
     return (
-      <Link href="/" className="group inline-flex items-center justify-center">
+      <Link href="/" className="group inline-flex items-center justify-center shrink-0">
         {content}
       </Link>
     );

@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss" source("..");
 
 @font-face {
   font-family: 'Calibri';
@@ -44,6 +44,8 @@
   --primary-navy: #1E3A8A;
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(226, 232, 240, 0.85);
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   font-family: 'Calibri', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
 }
 
@@ -53,8 +55,18 @@
 }
 
 html {
-  scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
+}
+
+.smooth-scroll-pane {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-behavior: auto;
+}
+
+.smooth-table-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 body {
@@ -90,28 +102,24 @@ input, button, select, textarea, table, th, td {
 }
 
 .glass-box-white {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1.5px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1.5px solid rgba(226, 232, 240, 0.92);
   box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.03);
 }
 
 .glass-input-white {
   background: #ffffff;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1.5px solid #CBD5E1;
-  box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.04), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), inset 0 1px 2px rgba(255, 255, 255, 0.95);
   font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
   font-size: 11pt;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
 
 .glass-input-white:hover {
   background: #ffffff;
   border-color: #94A3B8;
-  box-shadow: 0 3px 10px -2px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.07);
 }
 
 .glass-input-white:focus {
@@ -122,20 +130,18 @@ input, button, select, textarea, table, th, td {
 }
 
 .glass-panel-subtle {
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.6);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(226, 232, 240, 0.65);
 }
 
 .glass-panel-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.2s var(--ease-spring), box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .glass-panel-hover:hover {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 10px 25px -3px rgba(37, 99, 235, 0.08), 0 4px 6px -4px rgba(37, 99, 235, 0.05);
-  transform: translateY(-1px);
+  transform: translate3d(0, -1px, 0);
 }
 
 /* PURE WHITE GLASSMORPHISM - High translucency, pure white gleaming illuminated edges, lens flare reflections */
@@ -208,27 +214,22 @@ input, button, select, textarea, table, th, td {
   transform: translateY(-1px);
 }
 
-/* PURE WHITE GLASSMORPHISM TABLE INPUT BOXES & SECTION PILL */
+/* PURE WHITE GLASSMORPHISM TABLE INPUT BOXES & SECTION PILL (Zero backdrop-blur for 120Hz scroll performance) */
 .glass-input-pure-white {
-  background: rgba(255, 255, 255, 0.92) !important;
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  background: #ffffff !important;
   border: 1.5px solid rgba(203, 213, 225, 0.9) !important;
   box-shadow:
-    0 1px 3px rgba(15, 23, 42, 0.04),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1),
-    inset 0 -1px 1px rgba(226, 232, 240, 0.5) !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .glass-input-pure-white:hover {
   background: #ffffff !important;
   border-color: rgba(147, 197, 253, 0.95) !important;
   box-shadow:
-    0 0 12px rgba(255, 255, 255, 1),
     0 2px 8px -2px rgba(37, 99, 235, 0.12),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1) !important;
-  transform: translateY(-0.5px);
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
 }
 
 .glass-input-pure-white:focus,
@@ -237,34 +238,28 @@ input, button, select, textarea, table, th, td {
   border-color: #2563EB !important;
   box-shadow:
     0 0 0 3px rgba(37, 99, 235, 0.16),
-    0 0 16px rgba(255, 255, 255, 1),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1) !important;
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
   outline: none !important;
 }
 
 .glass-section-box {
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(239, 246, 255, 0.92) 100%
+    #ffffff 0%,
+    #eff6ff 100%
   ) !important;
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1.5px solid rgba(191, 219, 254, 0.95) !important;
   box-shadow:
-    0 1px 4px rgba(37, 99, 235, 0.08),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1),
-    inset 0 -1px 1px rgba(191, 219, 254, 0.5) !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    0 1px 3px rgba(37, 99, 235, 0.07),
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .glass-section-box:hover {
   border-color: rgba(96, 165, 250, 0.95) !important;
   box-shadow:
-    0 0 16px rgba(255, 255, 255, 1),
     0 3px 10px rgba(37, 99, 235, 0.12),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1) !important;
-  transform: translateY(-0.5px);
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
 }
 
 .glass-section-box:focus {
@@ -272,8 +267,7 @@ input, button, select, textarea, table, th, td {
   border-color: #2563EB !important;
   box-shadow:
     0 0 0 3px rgba(37, 99, 235, 0.18),
-    0 0 16px rgba(255, 255, 255, 1),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1) !important;
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
   outline: none !important;
 }
 
@@ -283,58 +277,24 @@ input, button, select, textarea, table, th, td {
   justify-content: center;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(239, 246, 255, 0.92) 100%
+    #ffffff 0%,
+    #eff6ff 100%
   ) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1.5px solid rgba(191, 219, 254, 0.9) !important;
   box-shadow:
-    0 0 12px rgba(255, 255, 255, 0.95),
     0 2px 6px rgba(37, 99, 235, 0.08),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1) !important;
-  transition: all 0.2s ease;
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .glass-pill-pure-white:hover {
   border-color: rgba(96, 165, 250, 0.95) !important;
   box-shadow:
-    0 0 18px rgba(255, 255, 255, 1),
-    0 0 10px rgba(147, 197, 253, 0.5),
-    inset 0 1.5px 2px rgba(255, 255, 255, 1) !important;
+    0 3px 10px rgba(37, 99, 235, 0.14),
+    inset 0 1px 1px rgba(255, 255, 255, 1) !important;
 }
 
-/* Modern Glassmorphism Action Box - Pure White Animated */
-
-@keyframes glass-white-shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-@keyframes glass-white-pulse {
-  0%, 100% {
-    box-shadow:
-      0 0 16px rgba(255, 255, 255, 0.85),
-      0 4px 18px -2px rgba(15, 23, 42, 0.08),
-      inset 0 1px 2px rgba(255, 255, 255, 0.95),
-      inset 0 -1px 2px rgba(255, 255, 255, 0.5);
-    border-color: rgba(255, 255, 255, 0.95);
-  }
-  50% {
-    box-shadow:
-      0 0 32px rgba(255, 255, 255, 1),
-      0 0 50px rgba(255, 255, 255, 0.75),
-      0 8px 24px -2px rgba(15, 23, 42, 0.12),
-      inset 0 1.5px 3px rgba(255, 255, 255, 1),
-      inset 0 -1.5px 3px rgba(255, 255, 255, 0.7);
-    border-color: #ffffff;
-  }
-}
-
+/* Modern Glassmorphism Action Box - GPU Composited (Zero idle repaint animations during scroll) */
 .glass-action-box {
   position: relative;
   display: inline-flex;
@@ -345,52 +305,23 @@ input, button, select, textarea, table, th, td {
   border-radius: 16px;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(255, 255, 255, 0.78) 50%,
-    rgba(255, 255, 255, 0.92) 100%
+    #ffffff 0%,
+    #f8faff 55%,
+    #ffffff 100%
   );
-  backdrop-filter: blur(20px) saturate(190%);
-  -webkit-backdrop-filter: blur(20px) saturate(190%);
-  border: 1.5px solid rgba(255, 255, 255, 0.95);
+  border: 1.5px solid rgba(226, 232, 240, 0.95);
   box-shadow:
-    0 0 16px rgba(255, 255, 255, 0.85),
-    0 4px 18px -2px rgba(15, 23, 42, 0.08),
-    inset 0 1px 2px rgba(255, 255, 255, 0.95),
-    inset 0 -1px 2px rgba(255, 255, 255, 0.5);
-  animation: glass-white-pulse 3s ease-in-out infinite;
-  overflow: hidden;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Continuous pure white light shine sweeping through the glass box */
-.glass-action-box::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    115deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0) 30%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0) 70%,
-    transparent 100%
-  );
-  background-size: 250% 100%;
-  animation: glass-white-shimmer 3s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 1;
+    0 3px 12px -2px rgba(15, 23, 42, 0.07),
+    inset 0 1.5px 2px #ffffff;
+  transition: transform 0.18s var(--ease-spring), border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .glass-action-box:hover {
-  transform: translateY(-1px);
+  transform: translate3d(0, -1px, 0);
+  border-color: rgba(191, 219, 254, 0.95);
   box-shadow:
-    0 0 35px rgba(255, 255, 255, 1),
-    0 8px 24px -2px rgba(15, 23, 42, 0.12),
-    inset 0 1.5px 3px rgba(255, 255, 255, 1);
+    0 6px 18px -3px rgba(37, 99, 235, 0.12),
+    inset 0 1.5px 2px #ffffff;
 }
 
 .glass-symbol-btn {
@@ -402,24 +333,22 @@ input, button, select, textarea, table, th, td {
   width: 34px;
   height: 34px;
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.95);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), inset 0 1px 1px #ffffff;
+  transition: transform 0.16s var(--ease-spring), background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   cursor: pointer;
 }
 
 .glass-symbol-btn:hover {
-  background: #ffffff;
-  transform: translateY(-1px) scale(1.1);
-  box-shadow:
-    0 0 14px rgba(255, 255, 255, 1),
-    0 4px 12px rgba(15, 23, 42, 0.1),
-    inset 0 1px 2px rgba(255, 255, 255, 1);
+  background: #f8faff;
+  border-color: rgba(147, 197, 253, 0.9);
+  transform: translate3d(0, -1px, 0) scale(1.07);
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.1);
 }
 
 .glass-symbol-btn:active {
-  transform: translateY(0) scale(0.95);
+  transform: translate3d(0, 0, 0) scale(0.95);
 }
 
 /* Opaque white surface rule for tables and quotation editors */
@@ -428,17 +357,17 @@ input, button, select, textarea, table, th, td {
   border: 1px solid #e2e8f0;
 }
 
-/* Sleek vertical scrollbar, completely hide horizontal sliders */
+/* Sleek vertical & horizontal scrollbars so wide tables never feel stuck */
 ::-webkit-scrollbar {
   width: 6px;
-  height: 0px !important;
+  height: 6px;
 }
 
-::-webkit-scrollbar:horizontal {
-  display: none !important;
-  height: 0px !important;
-  width: 0px !important;
-  background: transparent !important;
+@media (max-width: 767px) {
+  ::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
 }
 
 ::-webkit-scrollbar-track {
@@ -446,17 +375,12 @@ input, button, select, textarea, table, th, td {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgba(148, 163, 184, 0.48);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-::-webkit-scrollbar-thumb:horizontal {
-  display: none !important;
-  background: transparent !important;
+  background: rgba(100, 116, 139, 0.78);
 }
 
 /* Print styling */
@@ -478,14 +402,12 @@ input, button, select, textarea, table, th, td {
   .jpa-sidebar > div { padding-left: .5rem; padding-right: .5rem; }
 }
 
-/* Glassmorphism Modern UI for all dropdown selects */
+/* Modern UI for native dropdown selects (without expensive per-element blur) */
 select {
-  background-color: rgba(255, 255, 255, 0.8) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
+  background-color: rgba(255, 255, 255, 0.96) !important;
   border: 1px solid rgba(226, 232, 240, 0.95) !important;
-  box-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.04) !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04) !important;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease !important;
   cursor: pointer !important;
 }
 
@@ -506,4 +428,128 @@ select option {
   background-color: #ffffff;
   color: #0f172a;
   padding: 8px 12px;
+}
+
+/* Modern Classic Glassmorphism Dropdown Trigger, Pill & Floating Menu */
+.glass-select-trigger {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(248, 250, 255, 0.80) 55%,
+    rgba(255, 255, 255, 0.94) 100%
+  );
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 2px 10px -2px rgba(15, 23, 42, 0.06),
+    0 0 0 1px rgba(203, 213, 225, 0.65),
+    inset 0 1.5px 2px rgba(255, 255, 255, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-select-trigger:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(239, 246, 255, 0.90) 100%
+  );
+  box-shadow:
+    0 6px 18px -4px rgba(37, 99, 235, 0.14),
+    0 0 0 1px rgba(147, 197, 253, 0.9),
+    inset 0 1.5px 2px rgba(255, 255, 255, 1);
+  transform: translateY(-0.5px);
+}
+
+.glass-select-trigger-open {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 0 3px rgba(37, 99, 235, 0.16),
+    0 8px 22px -4px rgba(37, 99, 235, 0.16),
+    0 0 0 1px rgba(37, 99, 235, 0.85),
+    inset 0 1.5px 2px rgba(255, 255, 255, 1);
+}
+
+.glass-select-pill {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.90) 0%,
+    rgba(239, 246, 255, 0.78) 50%,
+    rgba(255, 255, 255, 0.94) 100%
+  );
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 4px 16px -3px rgba(37, 99, 235, 0.09),
+    0 0 0 1px rgba(191, 219, 254, 0.85),
+    inset 0 1.5px 2.5px rgba(255, 255, 255, 1);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-select-pill:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(239, 246, 255, 0.92) 100%
+  );
+  box-shadow:
+    0 8px 22px -4px rgba(37, 99, 235, 0.16),
+    0 0 0 1px rgba(96, 165, 250, 0.9),
+    inset 0 1.5px 2.5px rgba(255, 255, 255, 1);
+  transform: translateY(-0.5px);
+}
+
+.glass-select-menu {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(248, 250, 255, 0.86) 50%,
+    rgba(255, 255, 255, 0.95) 100%
+  );
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1.5px solid rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 22px 50px -10px rgba(15, 23, 42, 0.22),
+    0 8px 20px -6px rgba(37, 99, 235, 0.12),
+    0 0 0 1px rgba(203, 213, 225, 0.7),
+    inset 0 1.5px 3px rgba(255, 255, 255, 1);
+  will-change: transform, opacity;
+  overscroll-behavior: contain;
+}
+
+/* Silky GPU-accelerated spring transitions for dropdowns, popovers, and sliders */
+.glass-dropdown-motion {
+  transition:
+    opacity 190ms var(--ease-spring),
+    transform 210ms var(--ease-spring);
+  will-change: transform, opacity;
+}
+
+.glass-dropdown-motion[data-state="closed"] {
+  transition:
+    opacity 135ms ease-out,
+    transform 145ms ease-out;
+}
+
+.glass-segmented-thumb {
+  transition: transform 280ms var(--ease-spring);
+  will-change: transform;
+}
+
+.smooth-drawer-slider {
+  transition:
+    transform 300ms var(--ease-spring),
+    width 300ms var(--ease-spring),
+    opacity 240ms var(--ease-spring);
+  will-change: transform, width;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-dropdown-motion,
+  .glass-segmented-thumb,
+  .smooth-drawer-slider {
+    transition: none !important;
+  }
 }
