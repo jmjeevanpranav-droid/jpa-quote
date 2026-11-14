@@ -1,0 +1,1 @@
+globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST["/api/user/avatar/route"]={"moduleLoading":{"prefix":"/_next/"},"ssrModuleMapping":{},"edgeSSRModuleMapping":{},"clientModules":{},"entryCSSFiles":{"D:\\Projects\\JPA Quote Builder\\src\\app\\api\\user\\avatar\\route":[]},"rscModuleMapping":{},"edgeRscModuleMapping":{}};

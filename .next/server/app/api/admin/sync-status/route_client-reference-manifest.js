@@ -1,0 +1,1 @@
+globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST["/api/admin/sync-status/route"]={"moduleLoading":{"prefix":"/_next/"},"ssrModuleMapping":{},"edgeSSRModuleMapping":{},"clientModules":{},"entryCSSFiles":{"D:\\Projects\\JPA Quote Builder\\src\\app\\api\\admin\\sync-status\\route":[]},"rscModuleMapping":{},"edgeRscModuleMapping":{}};

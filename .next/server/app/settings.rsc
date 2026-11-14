@@ -1,0 +1,43 @@
+#1:"$Sreact.fragment"
+2:"static/chunks/4667-f56c75e2372e4dfe.js"
+3:"static/chunks/app/layout-a33457501b2bc881.js"
+4:"ClientSessionSync"
+5:I[4088,["4667","$2","7177","$3"],"$4"]
+6:I[7121,[],""]
+7:I[4581,[],""]
+c:I[1304,[],"ClientPageRoot"]
+d:"static/chunks/1471-f910c079cd336533.js"
+e:"static/chunks/3485-7cf57dfd6b25e6b6.js"
+f:"static/chunks/4218-aeb272b7f3938c4f.js"
+10:"static/chunks/350-dde086f6e7bbbb05.js"
+11:"static/chunks/1274-8bdedeef536f9a78.js"
+12:"static/chunks/app/settings/page-47740681c092837f.js"
+13:I[1151,["1471","$d","3485","$e","4218","$f","4667","$2","350","$10","1274","$11","4662","$12"],"default"]
+14:I[484,[],"OutletBoundary"]
+15:"$Sreact.suspense"
+17:"ViewportBoundary"
+18:I[484,[],"$17"]
+1a:"MetadataBoundary"
+1b:I[484,[],"$1a"]
+1e:I[7123,[],"default",1]
+:HL["/_next/static/css/4dba6b7690c7a9a2.css","style"]
+8:X
+a:X
+b:[["children",{"s":"__PAGE__","h":514,"d":{"r":["$","$1","c",{"children":[["$","$Lc",null,{"Component":"$13","serverProvidedParams":null}],null,["$","$L14",null,{"children":["$","$15",null,{"name":"Next.MetadataOutlet","children":"$@16"}]}]]}],"p":true,"v":"$a"}}]]
+9:[["children",{"s":"settings","h":514,"d":{"r":["$","$1","c",{"children":[null,["$","$L6",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L7",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":"$undefined","forbidden":"$undefined","unauthorized":"$undefined"}]]}],"p":true,"v":"$a"},"c":"$Qb"}]]
+1d:X
+1f:X
+20:X
+0:{"P":null,"c":["","settings"],"q":"","i":false,"t":{"t":{"s":"","h":530,"d":{"r":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/css/4dba6b7690c7a9a2.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}]],["$","html",null,{"lang":"en","className":"h-full antialiased font-sans","children":["$","body",null,{"className":"min-h-full flex flex-col font-sans bg-[#F8FAFF] text-slate-900","style":{"fontFamily":"Calibri, \"Segoe UI\", Arial, sans-serif"},"children":[["$","$L5",null,{}],["$","$L6",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L7",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":[[["$","title",null,{"children":"404: This page could not be found."}],["$","div",null,{"style":{"fontFamily":"system-ui,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\"","height":"100vh","textAlign":"center","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center"},"children":["$","div",null,{"children":[["$","style",null,{"dangerouslySetInnerHTML":{"__html":"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}"}}],["$","h1",null,{"className":"next-error-h1","style":{"display":"inline-block","margin":"0 20px 0 0","padding":"0 23px 0 0","fontSize":24,"fontWeight":500,"verticalAlign":"top","lineHeight":"49px"},"children":404}],["$","div",null,{"style":{"display":"inline-block"},"children":["$","h2",null,{"style":{"fontSize":14,"fontWeight":400,"lineHeight":"49px","margin":0},"children":"This page could not be found."}]}]]}]}]],[]],"forbidden":"$undefined","unauthorized":"$undefined"}]]}]}]]}],"p":true,"v":"$8"},"c":"$Q9"},"h":{"r":["$","$1","h",{"children":[null,["$","$L18",null,{"children":"$L19"}],["$","$L1b",null,{"children":[["$","div",null,{"hidden":true,"children":["$","$15",null,{"name":"Next.Metadata","children":"$L1c"}]}],null]}],null]}],"p":true,"v":"$1d"}},"m":"$undefined","G":["$1e",[]],"S":true,"r":"$1f","s":"$20","a":"$@21","l":"$undefined","p":"$undefined","d":"$undefined","b":"hNglbFUfsgJTcCvkdw-ng","u":"$@22"}
+a:C
+20:300
+19:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]
+23:I[6869,[],"IconMark"]
+16:null
+1c:[["$","title","0",{"children":"JPA QUOTE"}],["$","meta","1",{"name":"description","content":"Internal Quotation Builder with Persistent Product & Rate Memory, AI document reading, and deterministic GST calculations for Jeevan Pranav Agencies (JPA)."}],["$","link","2",{"rel":"shortcut icon","href":"/jpa_favicon.svg"}],["$","link","3",{"rel":"icon","href":"/favicon.ico?7161ee1d105bc9c7","type":"image/x-icon","sizes":"48x48"}],["$","link","4",{"rel":"icon","href":"/jpa_favicon.svg"}],["$","link","5",{"rel":"apple-touch-icon","href":"/jpa_favicon.svg"}],["$","$L23","6",{}]]
+20:C
+1d:C
+1f:C
+8:C
+22:false
+21:null

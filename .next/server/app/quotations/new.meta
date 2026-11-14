@@ -1,0 +1,40 @@
+{
+  "status": 200,
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/quotations/layout,_N_T_/quotations/new/layout,_N_T_/quotations/new/page,_N_T_/quotations/new"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/quotations/new/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 49216,
+    "slots": {
+      "children": {
+        "hints": 49248,
+        "slots": {
+          "children": {
+            "hints": 49248,
+            "slots": {
+              "children": {
+                "hints": 49312,
+                "slots": null
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/801fb28e75a648fba4fecd981c3e4ca6ccbf525cfd7b70e62a4b21d3a8de8dab/$/quotations/new",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/quotations/new/page"
+    },
+    "isFallback": false
+  }
+}
