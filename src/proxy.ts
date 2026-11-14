@@ -19,6 +19,9 @@ export async function proxy(req: NextRequest) {
         (nextHost && originHostname === nextHost) ||
         originHostname.endsWith('.fly.dev') ||
         originHostname.endsWith('.vercel.app') ||
+        originHostname.endsWith('.hf.space') ||
+        originHostname === 'huggingface.co' ||
+        originHostname.endsWith('.onrender.com') ||
         originHostname === 'jpavistara.online' ||
         originHostname.endsWith('.jpavistara.online') ||
         originHostname === 'localhost' ||
@@ -136,9 +139,8 @@ export async function proxy(req: NextRequest) {
 }
 
 function applySecurityHeaders(res: NextResponse) {
-  // Enterprise-Grade Cybersecurity Headers
+  // Enterprise-Grade Cybersecurity Headers (compatible with Hugging Face Spaces iframe & direct view)
   res.headers.set('X-Content-Type-Options', 'nosniff');
-  res.headers.set('X-Frame-Options', 'DENY');
   res.headers.set('X-XSS-Protection', '1; mode=block');
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=(), payment=()');
@@ -147,7 +149,7 @@ function applySecurityHeaders(res: NextResponse) {
   res.headers.set('Expires', '0');
   res.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: blob: https://*.googleusercontent.com https://www.gstatic.com https://www.google.com; font-src 'self' data:; connect-src 'self' https://accounts.google.com https://www.google.com https://generativelanguage.googleapis.com; frame-src 'self' https://accounts.google.com https://www.google.com; frame-ancestors 'none';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://accounts.google.com; img-src 'self' data: blob: https://*.googleusercontent.com https://www.gstatic.com https://www.google.com; font-src 'self' data:; connect-src 'self' https://accounts.google.com https://www.google.com https://generativelanguage.googleapis.com https://router.huggingface.co https://api-inference.huggingface.co https://api.groq.com; frame-src 'self' https://accounts.google.com https://www.google.com; frame-ancestors 'self' https://huggingface.co https://*.hf.space;"
   );
 }
 

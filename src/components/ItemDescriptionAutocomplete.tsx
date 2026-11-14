@@ -2,8 +2,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, Database } from 'lucide-react';
+import { Sparkles, Database, X } from 'lucide-react';
 import { capitalizeInput } from '@/lib/utils/formatters';
+import {
+  getInstantRateCache,
+  hydrateInstantRateCacheFromProducts,
+  subscribeToRealtimeRateSync,
+} from '@/lib/realtime/microsecond-sync';
 
 export interface CatalogProduct {
   id: string;
@@ -63,7 +68,31 @@ export function ItemDescriptionAutocomplete({
       const res = await fetch('/api/products', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        setProducts(data.products || []);
+        const serverList: CatalogProduct[] = data.products || [];
+        hydrateInstantRateCacheFromProducts(serverList);
+
+        // Merge with any newer microsecond rate replacements in local cache
+        const cache = getInstantRateCache();
+        const merged = serverList.map((p) => {
+          const norm = String(p.description || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const cached = cache[norm];
+          if (cached && cached.default_rate > 0) {
+            return {
+              ...p,
+              default_rate: cached.default_rate,
+              default_gst_rate: cached.default_gst_rate || p.default_gst_rate,
+              unit: cached.unit || p.unit,
+              specification: cached.specification ?? p.specification,
+              pack: cached.pack ?? p.pack,
+            };
+          }
+          return p;
+        });
+        setProducts(merged);
       }
     } catch {
       // Graceful fallback
@@ -72,6 +101,40 @@ export function ItemDescriptionAutocomplete({
 
   useEffect(() => {
     loadProducts();
+    return subscribeToRealtimeRateSync(({ records }) => {
+      if (records && records.length > 0) {
+        setProducts((prev) => {
+          const next = [...prev];
+          for (const rec of records) {
+            const idx = next.findIndex(
+              (p) =>
+                p.id === rec.id ||
+                String(p.description || '').trim().toLowerCase() ===
+                  String(rec.description || '').trim().toLowerCase()
+            );
+            const mapped: CatalogProduct = {
+              id: rec.id,
+              item_code: rec.item_code,
+              description: rec.description,
+              normalized_name: rec.normalized_name,
+              category: rec.category,
+              specification: rec.specification ?? undefined,
+              pack: rec.pack ?? undefined,
+              unit: rec.unit,
+              default_rate: rec.default_rate,
+              default_gst_rate: rec.default_gst_rate,
+              last_verified_date: rec.last_verified_date,
+            };
+            if (idx >= 0) {
+              next[idx] = { ...next[idx], ...mapped };
+            } else {
+              next.unshift(mapped);
+            }
+          }
+          return next;
+        });
+      }
+    });
   }, []);
 
   const query = (value || '').trim().toLowerCase();
@@ -371,7 +434,7 @@ export function ItemDescriptionAutocomplete({
         autoFocus={autoFocus}
         placeholder={placeholder}
         onFocus={() => {
-          loadProducts();
+          if (products.length === 0) loadProducts();
           updateCoords();
           setIsOpen(true);
         }}
@@ -384,9 +447,26 @@ export function ItemDescriptionAutocomplete({
         onKeyDown={handleKeyDown}
         className={
           className ||
-          'glass-input-pure-white w-full px-2.5 py-1.5 text-xs sm:text-[12pt] font-semibold rounded-xl text-slate-900'
+          'glass-input-pure-white w-full pl-2.5 pr-7 py-1.5 text-xs sm:text-[12pt] font-semibold rounded-xl text-slate-900'
         }
       />
+      {value && (
+        <button
+          type="button"
+          tabIndex={-1}
+          title="Clear item"
+          onClick={(e) => {
+            e.stopPropagation();
+            onChange('');
+            setIsOpen(false);
+            setSelectedIndex(-1);
+            inputRef.current?.focus();
+          }}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
 
       {shouldRender && mounted && typeof document !== 'undefined'
         ? createPortal(dropdownPortal, document.body)

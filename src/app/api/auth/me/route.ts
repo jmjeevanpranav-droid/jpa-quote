@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth/session';
+import { getSession, createSession } from '@/lib/auth/session';
 import { getDb } from '@/lib/db/client';
 
 export async function GET(req: NextRequest) {
@@ -20,10 +20,24 @@ export async function GET(req: NextRequest) {
     }
   } catch {}
 
+  // Issue a fresh, lightweight signed session token (< 500 bytes) to heal any bloated client tokens
+  const freshToken = await createSession(
+    {
+      userId: session.userId,
+      email: session.email,
+      name: session.name,
+      contact: session.contact,
+      role: session.role,
+    },
+    true
+  );
+
   return NextResponse.json({
     authenticated: true,
+    token: freshToken,
     user: {
       ...session,
+      id: session.userId,
       avatarUrl,
       picture: avatarUrl,
     },

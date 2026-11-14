@@ -54,3 +54,5 @@ DeepSeek-OCR/
 *.pth
 *.onnx
 claude-code/
+
+.vercel

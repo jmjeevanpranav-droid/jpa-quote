@@ -65,21 +65,21 @@ async function runSeedDb() {
 
     if (oldAdminCheck.rows.length > 0) {
       await db.execute({
-        sql: `UPDATE users SET email = 'jeevanpranavagencies@gmail.com', name = 'N Jayakumar', role = 'admin', password_hash = ? WHERE id = 'usr_admin_1'`,
+        sql: `UPDATE users SET email = 'jeevanpranavagencies@gmail.com', name = 'N Jayakumar', contact = '+91 9790600971', role = 'admin', password_hash = ? WHERE id = 'usr_admin_1'`,
         args: [adminHash],
       });
     } else {
       await db.execute({
-        sql: `INSERT INTO users (id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, 'admin', ?, ?)`,
-        args: ['usr_admin_1', 'jeevanpranavagencies@gmail.com', 'N Jayakumar', adminHash, now],
+        sql: `INSERT INTO users (id, email, name, contact, role, password_hash, created_at) VALUES (?, ?, ?, ?, 'admin', ?, ?)`,
+        args: ['usr_admin_1', 'jeevanpranavagencies@gmail.com', 'N Jayakumar', '+91 9790600971', adminHash, now],
       });
     }
   } else {
     const row = adminCheck.rows[0];
-    if (row.name !== 'N Jayakumar' || row.role !== 'admin' || !row.password_hash) {
+    if (row.name !== 'N Jayakumar' || row.role !== 'admin' || !row.password_hash || !row.contact) {
       const adminHash = await bcrypt.hash('jpa@1977', 10);
       await db.execute({
-        sql: `UPDATE users SET name = 'N Jayakumar', role = 'admin', password_hash = ? WHERE email = 'jeevanpranavagencies@gmail.com'`,
+        sql: `UPDATE users SET name = 'N Jayakumar', contact = '+91 9790600971', role = 'admin', password_hash = ? WHERE email = 'jeevanpranavagencies@gmail.com'`,
         args: [adminHash],
       });
     }
@@ -133,78 +133,93 @@ async function runSeedDb() {
 
   // Check if company profile is already seeded
   const existingProfiles = await db.execute('SELECT COUNT(*) as count FROM company_profiles');
-  if (Number(existingProfiles.rows[0].count) > 0) {
+  if (Number(existingProfiles.rows[0].count) === 0) {
+    // 2. Seed Verified Supplier Company Profile
+    await db.execute({
+      sql: `INSERT INTO company_profiles (
+        id, name, tagline, gstin, address, phone, email, website, 
+        bank_name, account_no, ifsc_code, branch, signatory_name, signatory_designation, 
+        logo_url, is_default, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        'cmp_jpa_master',
+        'Jeevan Pranav Agencies (JPA)',
+        'Industrial & Housekeeping Supplies',
+        '33BRGPM1867B1Z1',
+        '16-P, Sakthi illam, Gandhi nagar, Mettuthottam, Podanur, Coimbatore-641023.',
+        '9790600971',
+        'jeevanpranavagencies@gmail.com',
+        'https://www.jeevanpranavagencies.com/',
+        'HDFC Bank Ltd',
+        '50200034981273',
+        'HDFC0001867',
+        'Podanur Branch, Coimbatore',
+        'Mr. N JAYAKUMAR',
+        'Proprietor / Authorised Signatory',
+        '/jpa-header-logo.png',
+        1,
+        now,
+        now,
+      ],
+    });
+  }
+
+  // 3. Seed Verified Customer: Lifestyle International (Marina Mall) — only in test environments
+  if (isTestEnv) {
+    const existingCust = await db.execute({
+      sql: "SELECT id FROM customers WHERE id = 'cust_lifestyle_marina' LIMIT 1",
+    });
+    if (existingCust.rows.length === 0) {
+      await db.execute({
+        sql: `INSERT INTO customers (
+          id, company_name, trade_name, gstin, pan, billing_address, delivery_address, 
+          contact_person, phone, email, state_code, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          'cust_lifestyle_marina',
+          'LIFESTYLE INTERNATIONAL PVT. LTD. (MARINA MALL)',
+          'HOME CENTRE, LANDMARK GROUP',
+          '33AAACL1234F1Z9',
+          'AAACL1234F',
+          '13/1A, EGATTUR, OMR, CHENNAI - 603103.',
+          '13/1A, EGATTUR, OMR, CHENNAI - 603103.',
+          'PRASANTH P, HOME CENTRE, LANDMARK GROUP',
+          '9790600971',
+          '',
+          '33',
+          'Marina Mall Store - Prime Retail Client',
+          now,
+          now,
+        ],
+      });
+
+      await db.execute({
+        sql: `INSERT INTO customer_stores (id, customer_id, store_name, address, contact_person, phone, created_at) VALUES 
+          (?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          'store_lifestyle_marina',
+          'cust_lifestyle_marina',
+          'LIFESTYLE INTERNATIONAL PVT. LTD. (MARINA MALL)',
+          '13/1A, EGATTUR, OMR, CHENNAI - 603103.',
+          'PRASANTH P',
+          '9790600971',
+          now,
+        ],
+      });
+    }
+  }
+
+  // 4. Seed Rate Library (Permanent Product & Rate Memory - The 22 Verified Items) if empty and not explicitly cleared
+  const clearedCheck = await db.execute("SELECT value FROM system_settings WHERE key = 'rate_library_cleared' LIMIT 1");
+  if (clearedCheck.rows.length > 0 && clearedCheck.rows[0].value === '1') {
     return;
   }
 
-  // 2. Seed Verified Supplier Company Profile
-  await db.execute({
-    sql: `INSERT INTO company_profiles (
-      id, name, tagline, gstin, address, phone, email, website, 
-      bank_name, account_no, ifsc_code, branch, signatory_name, signatory_designation, 
-      logo_url, is_default, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      'cmp_jpa_master',
-      'Jeevan Pranav Agencies (JPA)',
-      'Industrial & Housekeeping Supplies',
-      '33BRGPM1867B1Z1',
-      '16-P, Sakthi illam, Gandhi nagar, Mettuthottam, Podanur, Coimbatore-641023.',
-      '9790600971',
-      'jeevanpranavagencies@gmail.com',
-      'https://www.jeevanpranavagencies.com/',
-      'HDFC Bank Ltd',
-      '50200034981273',
-      'HDFC0001867',
-      'Podanur Branch, Coimbatore',
-      'Mr. N JAYAKUMAR',
-      'Proprietor / Authorised Signatory',
-      '/jpa-header-logo.png',
-      1,
-      now,
-      now,
-    ],
-  });
+  const existingProducts = await db.execute('SELECT COUNT(*) as count FROM products');
+  if (Number(existingProducts.rows[0].count) > 0) {
+    return;
+  }
 
-  // 3. Seed Verified Customer: Lifestyle International (Marina Mall)
-  await db.execute({
-    sql: `INSERT INTO customers (
-      id, company_name, trade_name, gstin, pan, billing_address, delivery_address, 
-      contact_person, phone, email, state_code, notes, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      'cust_lifestyle_marina',
-      'LIFESTYLE INTERNATIONAL PVT. LTD. (MARINA MALL)',
-      'HOME CENTRE, LANDMARK GROUP',
-      '33AAACL1234F1Z9',
-      'AAACL1234F',
-      '13/1A, EGATTUR, OMR, CHENNAI - 603103.',
-      '13/1A, EGATTUR, OMR, CHENNAI - 603103.',
-      'PRASANTH P, HOME CENTRE, LANDMARK GROUP',
-      '9790600971',
-      '',
-      '33',
-      'Marina Mall Store - Prime Retail Client',
-      now,
-      now,
-    ],
-  });
-
-  await db.execute({
-    sql: `INSERT INTO customer_stores (id, customer_id, store_name, address, contact_person, phone, created_at) VALUES 
-      (?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      'store_lifestyle_marina',
-      'cust_lifestyle_marina',
-      'LIFESTYLE INTERNATIONAL PVT. LTD. (MARINA MALL)',
-      '13/1A, EGATTUR, OMR, CHENNAI - 603103.',
-      'PRASANTH P',
-      '9790600971',
-      now,
-    ],
-  });
-
-  // 4. Seed Rate Library (Permanent Product & Rate Memory - The 22 Verified Items)
   const masterItems = [
     { code: 'ST-001', desc: 'GIFT WRAPPING TAPE', norm: 'gift wrapping tape', cat: 'Stationery', spec: 'Half - 1/2', pack: '10', unit: 'NOS', qty: 120, rate: 20.00, gst: 18.0 },
     { code: 'ST-002', desc: 'BEST WISHES CARD', norm: 'best wishes card', cat: 'Stationery', spec: '', pack: '', unit: 'Pkt', qty: 10, rate: 28.00, gst: 18.0 },
@@ -233,7 +248,7 @@ async function runSeedDb() {
   for (const p of masterItems) {
     const prodId = `prod_${p.code.toLowerCase().replace('-', '_')}`;
     await db.execute({
-      sql: `INSERT INTO products (
+      sql: `INSERT OR IGNORE INTO products (
         id, item_code, description, normalized_name, category, specification, pack, 
         unit, default_rate, default_gst_rate, is_active, last_verified_date, 
         last_verified_source, created_at, updated_at
@@ -245,7 +260,7 @@ async function runSeedDb() {
     });
 
     await db.execute({
-      sql: `INSERT INTO rate_change_history (
+      sql: `INSERT OR IGNORE INTO rate_change_history (
         id, product_id, old_rate, new_rate, change_date, source_quote_number, changed_by, notes, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
@@ -261,22 +276,24 @@ async function runSeedDb() {
       ],
     });
 
-    await db.execute({
-      sql: `INSERT INTO product_rates (
-        id, product_id, customer_id, rate, effective_from, source_quote_number, change_reason, updated_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        `rate_${prodId}_lifestyle`,
-        prodId,
-        'cust_lifestyle_marina',
-        p.rate,
-        '2026-10-15',
-        'JPA-74',
-        'Approved Rate Card JPA-74',
-        'JPA Administrator',
-        now,
-      ],
-    });
+    if (isTestEnv) {
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO product_rates (
+          id, product_id, customer_id, rate, effective_from, source_quote_number, change_reason, updated_by, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          `rate_${prodId}_lifestyle`,
+          prodId,
+          'cust_lifestyle_marina',
+          p.rate,
+          '2026-10-15',
+          'JPA-74',
+          'Approved Rate Card JPA-74',
+          'JPA Administrator',
+          now,
+        ],
+      });
+    }
   }
 
   // 5. Seed Historical Quotation: JPA-74 (Only in automated test environments)

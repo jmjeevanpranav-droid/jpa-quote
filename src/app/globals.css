@@ -546,6 +546,51 @@ select option {
   will-change: transform, width;
 }
 
+/* =========================================================================
+   macOS-Style Native Fluid Modal Keyframes & Utility Classes
+   ========================================================================= */
+@keyframes macBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes macModalScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.93) translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.mac-modal-backdrop {
+  animation: macBackdropIn 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity;
+}
+
+.mac-modal-content {
+  animation: macModalScaleIn 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center center;
+  will-change: transform, opacity;
+  box-shadow: 
+    0 25px 70px -10px rgba(15, 23, 42, 0.3),
+    0 12px 28px -6px rgba(15, 23, 42, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.85) inset;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mac-modal-backdrop,
+  .mac-modal-content {
+    animation: none !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .glass-dropdown-motion,
   .glass-segmented-thumb,

@@ -34,6 +34,10 @@ import {
 import { calculateQuotationSummary, formatINR } from '@/lib/calculations/financial';
 import { capitalizeInput } from '@/lib/utils/formatters';
 import { getActiveTabSession } from '@/lib/auth/client-context';
+import {
+  broadcastMicrosecondRateReplacement,
+  matchInstantRateFromCache,
+} from '@/lib/realtime/microsecond-sync';
 
 interface QuoteItem {
   id: string;
@@ -178,8 +182,17 @@ function NewQuotationContent() {
 
   // Load Customers and Supplier details
   useEffect(() => {
+    const parseSafe = async (r: Response) => {
+      try {
+        const text = await r.text();
+        return text && text.trim() ? JSON.parse(text) : {};
+      } catch {
+        return {};
+      }
+    };
+
     fetch('/api/customers')
-      .then((r) => r.json())
+      .then(parseSafe)
       .then((data) => {
         const custList = data.customers || [];
         setCustomers(custList);
@@ -231,19 +244,17 @@ function NewQuotationContent() {
               }
             }
           }
-        } catch (e) {
-          console.error('Error restoring pending AI import:', e);
-        }
+        } catch {}
       })
-      .catch((e) => console.error(e));
+      .catch(() => {});
 
     const loadCompany = () => {
       fetch('/api/company', { cache: 'no-store' })
-        .then((r) => r.json())
+        .then(parseSafe)
         .then((data) => {
           if (data.profile) setSupplierProfile(data.profile);
         })
-        .catch((e) => console.error(e));
+        .catch(() => {});
     };
 
     loadCompany();
@@ -396,20 +407,10 @@ function NewQuotationContent() {
     setSections(sections.filter((s) => s.id !== secId));
   };
 
-  // Clear All Items from a Section
+  // Clear All Items from a Section (Instant 1-click clear)
   const clearSectionItems = (secId: string) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec || sec.items.length === 0) return;
-    const hasData = sec.items.some(
-      (i) => (i.description && i.description.trim()) || i.quantity > 0 || i.unitRate > 0
-    );
-    if (hasData) {
-      if (!window.confirm(`Are you sure you want to clear all ${sec.items.length} items from this section?`)) {
-        return;
-      }
-    }
-    setSections(
-      sections.map((s) => (s.id === secId ? { ...s, items: [] } : s))
+    setSections((prev) =>
+      prev.map((s) => (s.id === secId ? { ...s, items: [] } : s))
     );
   };
 
@@ -483,8 +484,10 @@ function NewQuotationContent() {
     );
   };
 
+  const matchTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
   // CRITICAL: SILENT PRODUCT & RATE MEMORY AUTOFILL ON ITEM ENTRY
-  const handleItemFieldChange = async (
+  const handleItemFieldChange = (
     secId: string,
     itemId: string,
     field: keyof QuoteItem,
@@ -494,6 +497,38 @@ function NewQuotationContent() {
       typeof value === 'string' && ['description', 'specification', 'pack', 'unit'].includes(field as string)
         ? capitalizeInput(value)
         : value;
+
+    // If user cleared the description, immediately clear autofilled rate/spec/pack/unit as well
+    if (field === 'description' && typeof finalValue === 'string' && !finalValue.trim()) {
+      if (matchTimersRef.current[itemId]) {
+        clearTimeout(matchTimersRef.current[itemId]);
+        delete matchTimersRef.current[itemId];
+      }
+      setSections((prev) =>
+        prev.map((sec) => {
+          if (sec.id !== secId) return sec;
+          return {
+            ...sec,
+            items: sec.items.map((itm) =>
+              itm.id === itemId
+                ? {
+                    ...itm,
+                    description: '',
+                    specification: '',
+                    pack: '',
+                    unit: '',
+                    unitRate: 0,
+                    isRateAutofilled: false,
+                    productId: undefined,
+                    savedRateDate: undefined,
+                  }
+                : itm
+            ),
+          };
+        })
+      );
+      return;
+    }
 
     setSections((prev) =>
       prev.map((sec) => {
@@ -505,47 +540,79 @@ function NewQuotationContent() {
       })
     );
 
-    // If user edited the description, silently search the Rate Memory!
-    if (field === 'description' && typeof finalValue === 'string' && finalValue.trim().length >= 3) {
-      try {
-        const res = await fetch('/api/products/match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            description: finalValue,
-            customerId: selectedCustomerId,
-          }),
-        });
-
-        if (res.ok) {
-          const match = await res.json();
-          if (match.matched && match.rate) {
-            // Auto-populate silently without noisy popup!
-            setSections((prev) =>
-              prev.map((sec) => {
-                if (sec.id !== secId) return sec;
-                return {
-                  ...sec,
-                  items: sec.items.map((itm) => {
-                    if (itm.id !== itemId || itm.description !== value) return itm;
-                    return {
-                      ...itm,
-                      unitRate: match.rate,
-                      unit: match.unit || itm.unit,
-                      specification: itm.specification || match.specification || '',
-                      pack: itm.pack || match.pack || '',
-                      gstRate: match.gstRate ?? itm.gstRate,
-                      isRateAutofilled: true,
-                      savedRateDate: match.savedRateDate,
-                    };
-                  }),
-                };
-              })
-            );
-          }
+    // If user edited the description, check Microsecond Local Cache immediately + debounce Server Rate Memory lookup
+    if (field === 'description' && typeof finalValue === 'string') {
+      if (matchTimersRef.current[itemId]) {
+        clearTimeout(matchTimersRef.current[itemId]);
+      }
+      if (finalValue.trim().length >= 2) {
+        const instantMatch = matchInstantRateFromCache(finalValue);
+        if (instantMatch && instantMatch.matched && instantMatch.rate > 0) {
+          setSections((prev) =>
+            prev.map((sec) => {
+              if (sec.id !== secId) return sec;
+              return {
+                ...sec,
+                items: sec.items.map((itm) => {
+                  if (itm.id !== itemId || itm.description !== finalValue) return itm;
+                  return {
+                    ...itm,
+                    unitRate: instantMatch.rate,
+                    unit: instantMatch.unit || itm.unit,
+                    specification: itm.specification || instantMatch.specification || '',
+                    pack: itm.pack || instantMatch.pack || '',
+                    gstRate: instantMatch.gstRate ?? itm.gstRate,
+                    isRateAutofilled: true,
+                    savedRateDate: 'Real-Time Sync',
+                  };
+                }),
+              };
+            })
+          );
         }
-      } catch (err) {
-        // Silent match failure, do not disturb user
+      }
+      if (finalValue.trim().length >= 3) {
+        matchTimersRef.current[itemId] = setTimeout(async () => {
+          try {
+            const res = await fetch('/api/products/match', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                description: finalValue,
+                customerId: selectedCustomerId,
+              }),
+            });
+
+            if (res.ok) {
+              const match = await res.json();
+              if (match.matched && match.rate) {
+                setSections((prev) =>
+                  prev.map((sec) => {
+                    if (sec.id !== secId) return sec;
+                    return {
+                      ...sec,
+                      items: sec.items.map((itm) => {
+                        if (itm.id !== itemId || itm.description !== finalValue) return itm;
+                        return {
+                          ...itm,
+                          unitRate: match.rate,
+                          unit: match.unit || itm.unit,
+                          specification: itm.specification || match.specification || '',
+                          pack: itm.pack || match.pack || '',
+                          gstRate: match.gstRate ?? itm.gstRate,
+                          isRateAutofilled: true,
+                          savedRateDate: match.savedRateDate,
+                        };
+                      }),
+                    };
+                  })
+                );
+              }
+            }
+          } catch {
+            // Silent match failure
+          }
+        }, 120);
       }
     }
   };
@@ -654,11 +721,31 @@ function NewQuotationContent() {
 
       const data = await res.json();
       const id = savedQuoteId || data.quotationId;
+      const finalQuoteNo = data.quoteNumber || quoteNumber;
       setSavedQuoteId(id);
-      setQuoteNumber(data.quoteNumber || quoteNumber);
+      setQuoteNumber(finalQuoteNo);
       setStatus(desiredStatus);
+
+      // Broadcast newly saved quotation rates in microseconds across Rate Library & Dashboard Spotlight
+      const quotedRateItems = sections
+        .flatMap((s) => s.items)
+        .filter((i) => i.description?.trim() && Number(i.unitRate) > 0)
+        .map((i) => ({
+          description: i.description.trim(),
+          specification: i.specification?.trim() || null,
+          pack: i.pack?.trim() || null,
+          unit: i.unit?.trim() || 'Nos',
+          default_rate: Number(i.unitRate),
+          default_gst_rate: Number(i.gstRate ?? 18),
+          last_verified_date: quoteDate,
+          last_verified_source: finalQuoteNo,
+        }));
+      if (quotedRateItems.length > 0) {
+        broadcastMicrosecondRateReplacement(quotedRateItems, finalQuoteNo);
+      }
+
       alert(
-        `Quotation ${data.quoteNumber} saved successfully! Verified rates have been stored in JPA central Rate Memory.`
+        `Quotation ${finalQuoteNo} saved successfully! Verified rates have been stored in JPA central Rate Memory.`
       );
       return id;
     } catch (err: any) {

@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import { getDb } from '@/lib/db/client';
 import { seedDb } from '@/lib/db/seed';
 
 export async function GET(req: NextRequest) {
-  await seedDb();
-  const db = getDb();
+  try { await connection(); } catch {}
+  try {
+    await seedDb();
+    const db = getDb();
 
   const url = new URL(req.url);
   const q = url.searchParams.get('q')?.trim() || '';
@@ -74,6 +76,9 @@ export async function GET(req: NextRequest) {
   }));
 
   return NextResponse.json({ customers: customersWithStores });
+  } catch {
+    return NextResponse.json({ customers: [] }, { status: 200 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -275,16 +280,18 @@ export async function DELETE(req: NextRequest) {
     const id = url.searchParams.get('id');
 
     if (all) {
-      // 1. Delete all quotation items, sections, and quotations
-      await db.execute('DELETE FROM quotation_items');
-      await db.execute('DELETE FROM quotation_sections');
-      await db.execute('DELETE FROM quotations');
-      // 2. Clean product rates customer references
-      await db.execute('DELETE FROM product_rates WHERE customer_id IS NOT NULL');
-      // 3. Delete folders, stores, and customers
-      await db.execute('DELETE FROM company_folders');
-      await db.execute('DELETE FROM customer_stores');
-      await db.execute('DELETE FROM customers');
+      await db.batch(
+        [
+          'DELETE FROM quotation_items',
+          'DELETE FROM quotation_sections',
+          'DELETE FROM quotations',
+          'DELETE FROM product_rates WHERE customer_id IS NOT NULL',
+          'DELETE FROM company_folders',
+          'DELETE FROM customer_stores',
+          'DELETE FROM customers',
+        ],
+        'write'
+      );
       return NextResponse.json({ success: true, message: 'All customers and quotations deleted successfully' });
     }
 

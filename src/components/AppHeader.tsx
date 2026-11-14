@@ -5,6 +5,11 @@ import Link from 'next/link';
 import { Sparkles, Plus, Menu } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { AiImportModal } from './AiImportModal';
+import { installFetchInterceptor } from '@/lib/auth/client-context';
+
+if (typeof window !== 'undefined') {
+  installFetchInterceptor();
+}
 
 interface AppHeaderProps {
   title?: string;
@@ -118,7 +123,9 @@ export function AppHeader({ title, subtitle, onOpenAiImport }: AppHeaderProps) {
             } catch (e) {
               console.error('Failed to stash AI import in sessionStorage:', e);
             }
-            window.location.href = '/quotations/new';
+            window.location.href = window.location.hostname.endsWith('.hf.space')
+              ? '/quotations/new.html'
+              : '/quotations/new';
           }}
         />
       )}

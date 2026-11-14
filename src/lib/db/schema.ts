@@ -43,6 +43,9 @@ async function runInitDb() {
       created_at TEXT NOT NULL
     );
 
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_contact ON users(contact);
+
     CREATE TABLE IF NOT EXISTS system_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,

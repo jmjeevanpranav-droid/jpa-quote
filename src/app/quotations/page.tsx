@@ -32,9 +32,16 @@ export default function AllQuotationsPage() {
     if (searchTerm) url += `q=${encodeURIComponent(searchTerm)}&`;
 
     fetch(url)
-      .then((r) => r.json())
+      .then(async (r) => {
+        try {
+          const text = await r.text();
+          return text && text.trim() ? JSON.parse(text) : {};
+        } catch {
+          return {};
+        }
+      })
       .then((data) => setQuotations(data.quotations || []))
-      .catch((e) => console.error(e))
+      .catch(() => {})
       .finally(() => setLoading(false));
   };
 
@@ -52,29 +59,33 @@ export default function AllQuotationsPage() {
 
   const handleDelete = async (id: string, quoteNumber: string) => {
     if (!confirm(`Are you sure you want to delete quotation ${quoteNumber}?`)) return;
+    const prev = quotations;
+    setQuotations((curr) => curr.filter((q) => q.id !== id));
     try {
       const res = await fetch(`/api/quotations/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setQuotations(quotations.filter((q) => q.id !== id));
-      } else {
+      if (!res.ok) {
+        setQuotations(prev);
         alert('Failed to delete quotation');
       }
     } catch (e: any) {
+      setQuotations(prev);
       alert(e.message);
     }
   };
 
   const handleDeleteAll = async () => {
     if (!confirm('Are you sure you want to delete ALL quotations? This cannot be undone.')) return;
+    const prev = quotations;
+    setQuotations([]);
     try {
       const res = await fetch('/api/quotations?all=true', { method: 'DELETE' });
-      if (res.ok) {
-        setQuotations([]);
-      } else {
+      if (!res.ok) {
+        setQuotations(prev);
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Failed to delete all quotations');
       }
     } catch (e: any) {
+      setQuotations(prev);
       alert(e.message);
     }
   };

@@ -32,6 +32,10 @@ import {
 import Link from 'next/link';
 import { calculateQuotationSummary } from '@/lib/calculations/financial';
 import { capitalizeInput } from '@/lib/utils/formatters';
+import {
+  broadcastMicrosecondRateReplacement,
+  matchInstantRateFromCache,
+} from '@/lib/realtime/microsecond-sync';
 
 interface QuoteItem {
   id: string;
@@ -98,7 +102,7 @@ function EditQuotationContent({
         const vd = String(d.getDate()).padStart(2, '0');
         setValidityDate(`${vy}-${vm}-${vd}`);
       }
-    } catch {}
+    } catch { }
   };
 
   const setPlus15DaysValidity = () => {
@@ -113,7 +117,7 @@ function EditQuotationContent({
       const vm = String(d.getMonth() + 1).padStart(2, '0');
       const vd = String(d.getDate()).padStart(2, '0');
       setValidityDate(`${vy}-${vm}-${vd}`);
-    } catch {}
+    } catch { }
   };
 
   const [supplierProfile, setSupplierProfile] = useState<any>({
@@ -192,7 +196,7 @@ function EditQuotationContent({
           .then((data) => {
             if (data.profile) setSupplierProfile(data.profile);
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     };
 
@@ -201,7 +205,7 @@ function EditQuotationContent({
       if (e.key === 'jpa_company_profile' && e.newValue) {
         try {
           setSupplierProfile(JSON.parse(e.newValue));
-        } catch {}
+        } catch { }
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -215,7 +219,9 @@ function EditQuotationContent({
   const allFlattenedItems = sections.flatMap((sec) => sec.items);
   const summary = calculateQuotationSummary(allFlattenedItems, supplierProfile.gstin?.slice(0, 2) || '33', customerGstin.slice(0, 2) || supplierProfile.gstin?.slice(0, 2) || '33');
 
-  const handleItemFieldChange = async (
+  const matchTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const handleItemFieldChange = (
     secId: string,
     itemId: string,
     field: keyof QuoteItem,
@@ -236,42 +242,75 @@ function EditQuotationContent({
       })
     );
 
-    // Silent Rate Memory Match on description change
-    if (field === 'description' && typeof finalValue === 'string' && finalValue.trim().length >= 3) {
-      try {
-        const res = await fetch('/api/products/match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: finalValue, customerId: selectedCustomerId }),
-        });
-
-        if (res.ok) {
-          const match = await res.json();
-          if (match.matched && match.rate) {
-            setSections((prev) =>
-              prev.map((sec) => {
-                if (sec.id !== secId) return sec;
-                return {
-                  ...sec,
-                  items: sec.items.map((itm) => {
-                    if (itm.id !== itemId || itm.description !== value) return itm;
-                    return {
-                      ...itm,
-                      unitRate: match.rate,
-                      unit: match.unit || itm.unit,
-                      specification: itm.specification || match.specification || '',
-                      pack: itm.pack || match.pack || '',
-                      gstRate: match.gstRate ?? itm.gstRate,
-                      isRateAutofilled: true,
-                      savedRateDate: match.savedRateDate,
-                    };
-                  }),
-                };
-              })
-            );
-          }
+    // Microsecond Local Rate Memory Match + Server Match on description change
+    if (field === 'description' && typeof finalValue === 'string') {
+      if (matchTimersRef.current[itemId]) {
+        clearTimeout(matchTimersRef.current[itemId]);
+      }
+      if (finalValue.trim().length >= 2) {
+        const instantMatch = matchInstantRateFromCache(finalValue);
+        if (instantMatch && instantMatch.matched && instantMatch.rate > 0) {
+          setSections((prev) =>
+            prev.map((sec) => {
+              if (sec.id !== secId) return sec;
+              return {
+                ...sec,
+                items: sec.items.map((itm) => {
+                  if (itm.id !== itemId || itm.description !== finalValue) return itm;
+                  return {
+                    ...itm,
+                    unitRate: instantMatch.rate,
+                    unit: instantMatch.unit || itm.unit,
+                    specification: itm.specification || instantMatch.specification || '',
+                    pack: itm.pack || instantMatch.pack || '',
+                    gstRate: instantMatch.gstRate ?? itm.gstRate,
+                    isRateAutofilled: true,
+                    savedRateDate: 'Real-Time Sync',
+                  };
+                }),
+              };
+            })
+          );
         }
-      } catch (err) {}
+      }
+      if (finalValue.trim().length >= 3) {
+        matchTimersRef.current[itemId] = setTimeout(async () => {
+          try {
+            const res = await fetch('/api/products/match', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ description: finalValue, customerId: selectedCustomerId }),
+            });
+
+            if (res.ok) {
+              const match = await res.json();
+              if (match.matched && match.rate) {
+                setSections((prev) =>
+                  prev.map((sec) => {
+                    if (sec.id !== secId) return sec;
+                    return {
+                      ...sec,
+                      items: sec.items.map((itm) => {
+                        if (itm.id !== itemId || itm.description !== finalValue) return itm;
+                        return {
+                          ...itm,
+                          unitRate: match.rate,
+                          unit: match.unit || itm.unit,
+                          specification: itm.specification || match.specification || '',
+                          pack: itm.pack || match.pack || '',
+                          gstRate: match.gstRate ?? itm.gstRate,
+                          isRateAutofilled: true,
+                          savedRateDate: match.savedRateDate,
+                        };
+                      }),
+                    };
+                  })
+                );
+              }
+            }
+          } catch (err) { }
+        }, 120);
+      }
     }
   };
 
@@ -306,17 +345,7 @@ function EditQuotationContent({
   };
 
   const clearSectionItems = (secId: string) => {
-    const sec = sections.find((s) => s.id === secId);
-    if (!sec || sec.items.length === 0) return;
-    const hasData = sec.items.some(
-      (i) => (i.description && i.description.trim()) || i.quantity > 0 || i.unitRate > 0
-    );
-    if (hasData) {
-      if (!window.confirm(`Are you sure you want to clear all ${sec.items.length} items from this section?`)) {
-        return;
-      }
-    }
-    setSections(sections.map((s) => (s.id === secId ? { ...s, items: [] } : s)));
+    setSections((prev) => prev.map((s) => (s.id === secId ? { ...s, items: [] } : s)));
   };
 
   const openAiImportForSection = (secId: string, secName: string) => {
@@ -463,13 +492,13 @@ function EditQuotationContent({
           prev.map((sec) =>
             sec.id === aiImportTargetSecId
               ? {
-                  ...sec,
-                  name: targetFormatted,
-                  items:
-                    sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
-                      ? newItems
-                      : [...sec.items, ...newItems],
-                }
+                ...sec,
+                name: targetFormatted,
+                items:
+                  sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
+                    ? newItems
+                    : [...sec.items, ...newItems],
+              }
               : sec
           )
         );
@@ -485,12 +514,12 @@ function EditQuotationContent({
             prev.map((sec) =>
               sec.id === aiImportTargetSecId
                 ? {
-                    ...sec,
-                    items:
-                      sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
-                        ? newItems
-                        : [...sec.items, ...newItems],
-                  }
+                  ...sec,
+                  items:
+                    sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
+                      ? newItems
+                      : [...sec.items, ...newItems],
+                }
                 : sec
             )
           );
@@ -505,12 +534,12 @@ function EditQuotationContent({
           prev.map((sec, idx) =>
             idx === existingIndex
               ? {
-                  ...sec,
-                  items:
-                    sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
-                      ? newItems
-                      : [...sec.items, ...newItems],
-                }
+                ...sec,
+                items:
+                  sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
+                    ? newItems
+                    : [...sec.items, ...newItems],
+              }
               : sec
           )
         );
@@ -537,12 +566,12 @@ function EditQuotationContent({
         prev.map((sec, idx) =>
           idx === existingIndex
             ? {
-                ...sec,
-                items:
-                  sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
-                    ? newItems
-                    : [...sec.items, ...newItems],
-              }
+              ...sec,
+              items:
+                sec.items.length === 0 || (sec.items.length === 1 && !sec.items[0].description.trim())
+                  ? newItems
+                  : [...sec.items, ...newItems],
+            }
             : sec
         )
       );
@@ -611,6 +640,25 @@ function EditQuotationContent({
       }
 
       if (desiredStatus) setStatus(desiredStatus);
+
+      // Broadcast updated quotation rates in microseconds across Rate Library & Dashboard Spotlight
+      const quotedRateItems = sections
+        .flatMap((s) => s.items)
+        .filter((i) => i.description?.trim() && Number(i.unitRate) > 0)
+        .map((i) => ({
+          description: i.description.trim(),
+          specification: i.specification?.trim() || null,
+          pack: i.pack?.trim() || null,
+          unit: i.unit?.trim() || 'Nos',
+          default_rate: Number(i.unitRate),
+          default_gst_rate: Number(i.gstRate ?? 18),
+          last_verified_date: quoteDate,
+          last_verified_source: quoteNumber,
+        }));
+      if (quotedRateItems.length > 0) {
+        broadcastMicrosecondRateReplacement(quotedRateItems, quoteNumber);
+      }
+
       alert(`Quotation ${quoteNumber} updated successfully. Rate Memory updated.`);
       return true;
     } catch (err: any) {
@@ -706,11 +754,10 @@ function EditQuotationContent({
             <button
               type="button"
               onClick={() => setShowPreview(!showPreview)}
-              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 cursor-pointer ${
-                showPreview
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 cursor-pointer ${showPreview
                   ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs hover:bg-blue-100/70'
                   : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs hover:border-slate-300'
-              }`}
+                }`}
             >
               <span className="transition-transform duration-250">
                 {showPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -738,9 +785,8 @@ function EditQuotationContent({
         <div className="flex-1 flex overflow-hidden relative">
           {/* Form */}
           <div
-            className={`flex-1 min-w-0 overflow-y-auto smooth-scroll-pane p-3 sm:p-6 space-y-5 sm:space-y-6 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              showPreview ? 'lg:w-3/5' : 'w-full'
-            }`}
+            className={`flex-1 min-w-0 overflow-y-auto smooth-scroll-pane p-3 sm:p-6 space-y-5 sm:space-y-6 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${showPreview ? 'lg:w-3/5' : 'w-full'
+              }`}
           >
             {/* Customer Details */}
             <div className="glass-panel rounded-2xl p-5 border border-white/80 space-y-4">
@@ -972,188 +1018,188 @@ function EditQuotationContent({
                           </tr>
                         ) : (
                           section.items.map((item, iIdx) => {
-                          const taxable = Number((item.quantity * item.unitRate).toFixed(2));
-                          const gst = Number(((taxable * (item.gstRate || 0)) / 100).toFixed(2));
-                          const total = Number((taxable + gst).toFixed(2));
+                            const taxable = Number((item.quantity * item.unitRate).toFixed(2));
+                            const gst = Number(((taxable * (item.gstRate || 0)) / 100).toFixed(2));
+                            const total = Number((taxable + gst).toFixed(2));
 
-                          return (
-                            <tr key={item.id} className="hover:bg-blue-50/20 transition-colors group">
-                              <td className="p-2.5 text-center text-slate-400 font-mono text-xs sm:text-[11pt]">
-                                {iIdx + 1}
-                              </td>
-                              <td className="p-2.5 relative">
-                                <div className="space-y-1">
-                                  <ItemDescriptionAutocomplete
-                                    value={item.description}
-                                    className="glass-input-pure-white w-full px-2.5 py-1.5 text-xs sm:text-[12pt] font-semibold rounded-xl text-slate-900"
+                            return (
+                              <tr key={item.id} className="hover:bg-blue-50/20 transition-colors group">
+                                <td className="p-2.5 text-center text-slate-400 font-mono text-xs sm:text-[11pt]">
+                                  {iIdx + 1}
+                                </td>
+                                <td className="p-2.5 relative">
+                                  <div className="space-y-1">
+                                    <ItemDescriptionAutocomplete
+                                      value={item.description}
+                                      className="glass-input-pure-white w-full px-2.5 py-1.5 text-xs sm:text-[12pt] font-semibold rounded-xl text-slate-900"
+                                      onChange={(val) =>
+                                        handleItemFieldChange(
+                                          section.id,
+                                          item.id,
+                                          'description',
+                                          val
+                                        )
+                                      }
+                                      onSelectProduct={(product) => {
+                                        setSections((prev) =>
+                                          prev.map((sec) => {
+                                            if (sec.id !== section.id) return sec;
+                                            return {
+                                              ...sec,
+                                              items: sec.items.map((itm) => {
+                                                if (itm.id !== item.id) return itm;
+                                                return {
+                                                  ...itm,
+                                                  productId: product.id,
+                                                  description: product.description,
+                                                  specification: product.specification || '',
+                                                  pack: product.pack || '',
+                                                  unit: product.unit || 'Nos',
+                                                  unitRate: Number(product.default_rate || 0),
+                                                  gstRate: Number(product.default_gst_rate ?? 18),
+                                                  isRateAutofilled: Number(product.default_rate || 0) > 0,
+                                                  savedRateDate: product.last_verified_date || 'Rate Memory',
+                                                };
+                                              }),
+                                            };
+                                          })
+                                        );
+                                      }}
+                                    />
+                                    {item.isRateAutofilled && (
+                                      <RateMatchBadge
+                                        date={item.savedRateDate}
+                                        rate={item.unitRate}
+                                      />
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-2.5">
+                                  <input
+                                    type="text"
+                                    value={item.specification}
+                                    placeholder="Spec"
+                                    onChange={(e) =>
+                                      handleItemFieldChange(
+                                        section.id,
+                                        item.id,
+                                        'specification',
+                                        e.target.value
+                                      )
+                                    }
+                                    className="glass-input-pure-white w-full px-2 py-1.5 text-xs sm:text-[12pt] rounded-xl text-slate-800"
+                                  />
+                                </td>
+                                <td className="p-2.5">
+                                  <input
+                                    type="text"
+                                    value={item.pack}
+                                    placeholder="Pack"
+                                    onChange={(e) =>
+                                      handleItemFieldChange(section.id, item.id, 'pack', e.target.value)
+                                    }
+                                    className="glass-input-pure-white w-full px-2 py-1.5 text-xs sm:text-[12pt] rounded-xl text-slate-800 text-center"
+                                  />
+                                </td>
+                                <td className="p-2.5 text-right">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    aria-label="Quantity"
+                                    value={item.quantity || ''}
+                                    onChange={(e) =>
+                                      handleItemFieldChange(
+                                        section.id,
+                                        item.id,
+                                        'quantity',
+                                        Number(e.target.value)
+                                      )
+                                    }
+                                    className="glass-input-pure-white w-20 sm:w-24 px-2 py-1.5 text-xs sm:text-[12pt] text-right rounded-xl font-bold text-slate-900 font-mono"
+                                  />
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <input
+                                    type="text"
+                                    value={item.unit}
+                                    onChange={(e) =>
+                                      handleItemFieldChange(section.id, item.id, 'unit', e.target.value)
+                                    }
+                                    className="glass-input-pure-white w-20 sm:w-24 px-2 py-1.5 text-xs sm:text-[12pt] text-center rounded-xl text-slate-800 font-semibold"
+                                  />
+                                </td>
+                                <td className="p-2.5 text-right">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    aria-label="Unit rate"
+                                    value={item.unitRate || ''}
+                                    onChange={(e) =>
+                                      handleItemFieldChange(
+                                        section.id,
+                                        item.id,
+                                        'unitRate',
+                                        Number(e.target.value)
+                                      )
+                                    }
+                                    className="glass-input-pure-white w-24 sm:w-28 px-2 py-1.5 text-xs sm:text-[12pt] text-right rounded-xl font-bold text-blue-700 font-mono"
+                                  />
+                                </td>
+                                {/* GST Smooth Glassmorphism Drop */}
+                                <td className="p-2.5 text-center">
+                                  <GlassSelect
+                                    size="sm"
+                                    value={item.gstRate}
                                     onChange={(val) =>
                                       handleItemFieldChange(
                                         section.id,
                                         item.id,
-                                        'description',
-                                        val
+                                        'gstRate',
+                                        Number(val)
                                       )
                                     }
-                                    onSelectProduct={(product) => {
-                                      setSections((prev) =>
-                                        prev.map((sec) => {
-                                          if (sec.id !== section.id) return sec;
-                                          return {
-                                            ...sec,
-                                            items: sec.items.map((itm) => {
-                                              if (itm.id !== item.id) return itm;
-                                              return {
-                                                ...itm,
-                                                productId: product.id,
-                                                description: product.description,
-                                                specification: product.specification || '',
-                                                pack: product.pack || '',
-                                                unit: product.unit || 'Nos',
-                                                unitRate: Number(product.default_rate || 0),
-                                                gstRate: Number(product.default_gst_rate ?? 18),
-                                                isRateAutofilled: Number(product.default_rate || 0) > 0,
-                                                savedRateDate: product.last_verified_date || 'Rate Memory',
-                                              };
-                                            }),
-                                          };
-                                        })
-                                      );
-                                    }}
+                                    options={[
+                                      { value: 0, label: '0%' },
+                                      { value: 5, label: '5%' },
+                                      { value: 18, label: '18%' },
+                                    ]}
+                                    ariaLabel="GST rate"
+                                    className="w-20 sm:w-24 mx-auto"
+                                    buttonClassName="py-1.5 px-2 text-center text-xs sm:text-[12pt] justify-center font-bold font-sans text-slate-900 glass-input-pure-white rounded-xl shadow-2xs"
+                                    menuClassName="w-24 min-w-[90px] text-xs sm:text-[12pt]"
                                   />
-                                  {item.isRateAutofilled && (
-                                    <RateMatchBadge
-                                      date={item.savedRateDate}
-                                      rate={item.unitRate}
-                                    />
-                                  )}
-                                </div>
-                              </td>
-                              <td className="p-2.5">
-                                <input
-                                  type="text"
-                                  value={item.specification}
-                                  placeholder="Spec"
-                                  onChange={(e) =>
-                                    handleItemFieldChange(
-                                      section.id,
-                                      item.id,
-                                      'specification',
-                                      e.target.value
-                                    )
-                                  }
-                                  className="glass-input-pure-white w-full px-2 py-1.5 text-xs sm:text-[12pt] rounded-xl text-slate-800"
-                                />
-                              </td>
-                              <td className="p-2.5">
-                                <input
-                                  type="text"
-                                  value={item.pack}
-                                  placeholder="Pack"
-                                  onChange={(e) =>
-                                    handleItemFieldChange(section.id, item.id, 'pack', e.target.value)
-                                  }
-                                  className="glass-input-pure-white w-full px-2 py-1.5 text-xs sm:text-[12pt] rounded-xl text-slate-800 text-center"
-                                />
-                              </td>
-                              <td className="p-2.5 text-right">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  aria-label="Quantity"
-                                  value={item.quantity || ''}
-                                  onChange={(e) =>
-                                    handleItemFieldChange(
-                                      section.id,
-                                      item.id,
-                                      'quantity',
-                                      Number(e.target.value)
-                                    )
-                                  }
-                                  className="glass-input-pure-white w-20 sm:w-24 px-2 py-1.5 text-xs sm:text-[12pt] text-right rounded-xl font-bold text-slate-900 font-mono"
-                                />
-                              </td>
-                              <td className="p-2.5 text-center">
-                                <input
-                                  type="text"
-                                  value={item.unit}
-                                  onChange={(e) =>
-                                    handleItemFieldChange(section.id, item.id, 'unit', e.target.value)
-                                  }
-                                  className="glass-input-pure-white w-20 sm:w-24 px-2 py-1.5 text-xs sm:text-[12pt] text-center rounded-xl text-slate-800 font-semibold"
-                                />
-                              </td>
-                              <td className="p-2.5 text-right">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  aria-label="Unit rate"
-                                  value={item.unitRate || ''}
-                                  onChange={(e) =>
-                                    handleItemFieldChange(
-                                      section.id,
-                                      item.id,
-                                      'unitRate',
-                                      Number(e.target.value)
-                                    )
-                                  }
-                                  className="glass-input-pure-white w-24 sm:w-28 px-2 py-1.5 text-xs sm:text-[12pt] text-right rounded-xl font-bold text-blue-700 font-mono"
-                                />
-                              </td>
-                              {/* GST Smooth Glassmorphism Drop */}
-                              <td className="p-2.5 text-center">
-                                <GlassSelect
-                                  size="sm"
-                                  value={item.gstRate}
-                                  onChange={(val) =>
-                                    handleItemFieldChange(
-                                      section.id,
-                                      item.id,
-                                      'gstRate',
-                                      Number(val)
-                                    )
-                                  }
-                                  options={[
-                                    { value: 0, label: '0%' },
-                                    { value: 5, label: '5%' },
-                                    { value: 18, label: '18%' },
-                                  ]}
-                                  ariaLabel="GST rate"
-                                  className="w-20 sm:w-24 mx-auto"
-                                  buttonClassName="py-1.5 px-2 text-center text-xs sm:text-[12pt] justify-center font-bold font-sans text-slate-900 glass-input-pure-white rounded-xl shadow-2xs"
-                                  menuClassName="w-24 min-w-[90px] text-xs sm:text-[12pt]"
-                                />
-                              </td>
-                              <td className="p-2.5 text-right text-xs sm:text-[12pt] text-slate-800 font-medium whitespace-nowrap">
-                                ₹{taxable.toFixed(2)}
-                              </td>
-                              <td className="p-2.5 text-right text-xs sm:text-[12pt] font-bold text-slate-900 whitespace-nowrap">
-                                ₹{total.toFixed(2)}
-                              </td>
-                              <td className="p-2.5 text-center">
-                                <div className="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    type="button"
-                                    onClick={() => duplicateItem(section.id, item)}
-                                    title="Duplicate row"
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                                  >
-                                    <Copy className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeItem(section.id, item.id)}
-                                    title="Delete row"
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
+                                </td>
+                                <td className="p-2.5 text-right text-xs sm:text-[12pt] text-slate-800 font-medium whitespace-nowrap">
+                                  ₹{taxable.toFixed(2)}
+                                </td>
+                                <td className="p-2.5 text-right text-xs sm:text-[12pt] font-bold text-slate-900 whitespace-nowrap">
+                                  ₹{total.toFixed(2)}
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <div className="flex items-center justify-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      type="button"
+                                      onClick={() => duplicateItem(section.id, item)}
+                                      title="Duplicate row"
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                    >
+                                      <Copy className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeItem(section.id, item.id)}
+                                      title="Delete row"
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
@@ -1280,15 +1326,14 @@ function EditQuotationContent({
                 </div>
               </div>
             </div>
-            </div>
+          </div>
 
           {/* Right Live Preview — Desktop Split Slider + Mobile Slide-Over Sheet */}
           <div
-            className={`hidden lg:flex flex-col min-w-0 shrink-0 border-slate-200/80 bg-slate-100/60 overflow-hidden transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              showPreview
+            className={`hidden lg:flex flex-col min-w-0 shrink-0 border-slate-200/80 bg-slate-100/60 overflow-hidden transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] ${showPreview
                 ? 'lg:w-2/5 border-l opacity-100'
                 : 'lg:w-0 border-l-0 opacity-0 pointer-events-none'
-            }`}
+              }`}
             style={{ willChange: 'width, opacity' }}
           >
             <div className="w-full min-w-[380px] xl:min-w-[460px] p-4 sm:p-6 h-full overflow-y-auto smooth-scroll-pane">
@@ -1298,14 +1343,12 @@ function EditQuotationContent({
 
           {/* Mobile & Tablet Smooth Slide-Over Preview Drawer (< lg) */}
           <div
-            className={`fixed inset-0 z-40 lg:hidden flex justify-end transition-[visibility] duration-300 ${
-              showPreview ? 'visible pointer-events-auto' : 'invisible pointer-events-none delay-300'
-            }`}
+            className={`fixed inset-0 z-40 lg:hidden flex justify-end transition-[visibility] duration-300 ${showPreview ? 'visible pointer-events-auto' : 'invisible pointer-events-none delay-300'
+              }`}
           >
             <div
-              className={`fixed inset-0 bg-slate-900/45 backdrop-blur-[2px] transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                showPreview ? 'opacity-100' : 'opacity-0'
-              }`}
+              className={`fixed inset-0 bg-slate-900/45 backdrop-blur-[2px] transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${showPreview ? 'opacity-100' : 'opacity-0'
+                }`}
               onClick={() => setShowPreview(false)}
               aria-hidden="true"
             />

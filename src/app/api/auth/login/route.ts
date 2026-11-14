@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db/client';
 import { seedDb } from '@/lib/db/seed';
 import { createSession } from '@/lib/auth/session';
 import { verifyRecaptchaToken } from '@/lib/auth/recaptcha';
+import { normalizePhoneNumber } from '@/lib/utils/formatters';
 import bcrypt from 'bcryptjs';
 
 // In-memory rate limiter to prevent brute-force attacks
@@ -14,9 +15,9 @@ const loginAttempts = new Map<string, LoginAttemptRecord>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 
-function getClientIdentifier(req: NextRequest, email: string): string {
+function getClientIdentifier(req: NextRequest, identifier: string): string {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown_ip';
-  return `${ip}::${email.toLowerCase().trim()}`;
+  return `${ip}::${identifier.toLowerCase().trim()}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -30,9 +31,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    const { email, password, recaptchaToken, rememberMe } = body;
-    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
-      return NextResponse.json({ error: 'Valid email and password are required' }, { status: 400 });
+    const { identifier, email, phone, password, recaptchaToken, rememberMe } = body;
+    const rawIdentifier = String(identifier || email || phone || '').trim();
+
+    if (!rawIdentifier || !password || typeof password !== 'string') {
+      return NextResponse.json({ error: 'Valid Gmail or Phone Number and Password are required.' }, { status: 400 });
     }
 
     // Google reCAPTCHA v3 Bot Protection Shield
@@ -45,8 +48,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cleanEmail = email.toLowerCase().trim();
-    const clientKey = getClientIdentifier(req, cleanEmail);
+    const clientKey = getClientIdentifier(req, rawIdentifier);
 
     // Check rate limit status
     const attemptRecord = loginAttempts.get(clientKey);
@@ -60,15 +62,77 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await db.execute({
-      sql: 'SELECT id, email, name, role, password_hash FROM users WHERE email = ? LIMIT 1',
-      args: [cleanEmail],
-    });
+    // Look up user flexibly by EITHER Gmail/Email OR Phone Number
+    let userRow: any = null;
+
+    if (rawIdentifier.includes('@')) {
+      // 1. Direct Email / Gmail Lookup
+      const cleanEmail = rawIdentifier.toLowerCase();
+      const result = await db.execute({
+        sql: 'SELECT id, email, name, contact, role, password_hash, avatar_url FROM users WHERE LOWER(email) = ? LIMIT 1',
+        args: [cleanEmail],
+      });
+      if (result.rows.length > 0) {
+        userRow = result.rows[0];
+      }
+    } else {
+      // 2. Phone Number Lookup with comprehensive formatting tolerance
+      const normPhone = normalizePhoneNumber(rawIdentifier);
+      if (normPhone.length >= 7) {
+        // Match common Indian format variants: +91 9790600971, +919790600971, 9790600971, 09790600971
+        const phoneVariants = [
+          `+91 ${normPhone}`,
+          `+91${normPhone}`,
+          normPhone,
+          `0${normPhone}`,
+          rawIdentifier,
+        ];
+
+        const phoneResult = await db.execute({
+          sql: `SELECT id, email, name, contact, role, password_hash, avatar_url 
+                FROM users 
+                WHERE contact IN (?, ?, ?, ?, ?) 
+                   OR LOWER(email) = LOWER(?)
+                LIMIT 1`,
+          args: [...phoneVariants, rawIdentifier],
+        });
+
+        if (phoneResult.rows.length > 0) {
+          userRow = phoneResult.rows[0];
+        } else {
+          // Fallback: Scan candidates with LIKE match
+          const candidateResult = await db.execute({
+            sql: `SELECT id, email, name, contact, role, password_hash, avatar_url 
+                  FROM users 
+                  WHERE contact LIKE ? OR contact LIKE ? LIMIT 10`,
+            args: [`%${normPhone}%`, `%${rawIdentifier}%`],
+          });
+
+          for (const cand of candidateResult.rows) {
+            if (cand.contact && normalizePhoneNumber(String(cand.contact)) === normPhone) {
+              userRow = cand;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // General fallback: query by exact email or contact match
+    if (!userRow) {
+      const fallbackResult = await db.execute({
+        sql: 'SELECT id, email, name, contact, role, password_hash, avatar_url FROM users WHERE LOWER(email) = LOWER(?) OR contact = ? LIMIT 1',
+        args: [rawIdentifier, rawIdentifier],
+      });
+      if (fallbackResult.rows.length > 0) {
+        userRow = fallbackResult.rows[0];
+      }
+    }
 
     // Timing-attack prevention: Perform a dummy bcrypt comparison if user doesn't exist
     const DUMMY_HASH = '$2a$10$e8w8GZ5J1BqH3qgZ9vMhE.7h3zU5d1tL5y0j7N2x4k6p8r0t2v4x6';
 
-    if (result.rows.length === 0) {
+    if (!userRow) {
       await bcrypt.compare(password, DUMMY_HASH).catch(() => false);
 
       // Record failed attempt
@@ -85,17 +149,16 @@ export async function POST(req: NextRequest) {
           'unauthenticated',
           'LOGIN_FAILED',
           'auth',
-          cleanEmail,
-          JSON.stringify({ reason: 'User not found', ip: req.headers.get('x-forwarded-for') || 'unknown' }),
+          rawIdentifier,
+          JSON.stringify({ reason: 'User not found', identifier: rawIdentifier, ip: remoteIp }),
           new Date().toISOString(),
         ],
       });
 
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+      return NextResponse.json({ error: 'Invalid Gmail, Phone Number or Password' }, { status: 401 });
     }
 
-    const user = result.rows[0];
-    const passwordValid = await bcrypt.compare(password, String(user.password_hash));
+    const passwordValid = await bcrypt.compare(password, String(userRow.password_hash));
 
     if (!passwordValid) {
       const currentCount = (attemptRecord?.count || 0) + 1;
@@ -107,36 +170,37 @@ export async function POST(req: NextRequest) {
               VALUES (?, ?, ?, ?, ?, ?, ?)`,
         args: [
           `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          String(user.id),
+          String(userRow.id),
           'LOGIN_FAILED',
           'auth',
-          cleanEmail,
-          JSON.stringify({ reason: 'Invalid password', attempt: currentCount, ip: req.headers.get('x-forwarded-for') || 'unknown' }),
+          rawIdentifier,
+          JSON.stringify({ reason: 'Invalid password', attempt: currentCount, ip: remoteIp }),
           new Date().toISOString(),
         ],
       });
 
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+      return NextResponse.json({ error: 'Invalid Gmail, Phone Number or Password' }, { status: 401 });
     }
 
     // Success: Reset rate limit tracker
     loginAttempts.delete(clientKey);
 
-    const userRole = (user.role as 'admin' | 'staff') || 'staff';
+    const userRole = (userRow.role as 'admin' | 'staff') || 'staff';
     const nowIso = new Date().toISOString();
 
     // Update last sign in time and last active timestamp for employee tracking
     await db.execute({
       sql: 'UPDATE users SET last_sign_in_at = ?, last_active_at = ? WHERE id = ?',
-      args: [nowIso, nowIso, String(user.id)],
+      args: [nowIso, nowIso, String(userRow.id)],
     });
 
-    // Create secure HTTP-only signed session token
+    // Create secure HTTP-only signed session token (avatarUrl fetched on demand via /api/auth/me to prevent HTTP 431)
     const token = await createSession(
       {
-        userId: String(user.id),
-        email: String(user.email),
-        name: String(user.name),
+        userId: String(userRow.id),
+        email: String(userRow.email),
+        name: String(userRow.name),
+        contact: userRow.contact ? String(userRow.contact) : undefined,
         role: userRole,
       },
       Boolean(rememberMe)
@@ -148,11 +212,11 @@ export async function POST(req: NextRequest) {
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
       args: [
         `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        String(user.id),
+        String(userRow.id),
         userRole === 'admin' ? 'LOGIN_SUCCESS_ADMIN' : 'LOGIN_SUCCESS_EMPLOYEE',
         'auth',
-        String(user.id),
-        JSON.stringify({ email: user.email, role: userRole, ip: req.headers.get('x-forwarded-for') || 'unknown' }),
+        String(userRow.id),
+        JSON.stringify({ email: userRow.email, contact: userRow.contact, role: userRole, ip: remoteIp }),
         new Date().toISOString(),
       ],
     });
@@ -161,11 +225,13 @@ export async function POST(req: NextRequest) {
       success: true,
       token,
       user: {
-        id: user.id,
-        userId: user.id,
-        email: user.email,
-        name: user.name,
+        id: userRow.id,
+        userId: userRow.id,
+        email: userRow.email,
+        name: userRow.name,
+        contact: userRow.contact || '',
         role: userRole,
+        avatarUrl: userRow.avatar_url || null,
       },
     });
   } catch (err: any) {

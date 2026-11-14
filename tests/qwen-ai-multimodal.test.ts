@@ -172,3 +172,20 @@ test('6. Quotation items default to 18% GST and auto-populate Rate Library price
   const defaultGstFallback = (matchData.unspecifiedGst ?? null) || 18;
   assert.equal(defaultGstFallback, 18, 'Default GST must be 18%');
 });
+
+test('7. JPA Vision AI & JPA Qwen extract PDF/Image documents without HTTP 401 failure', async () => {
+  await seedDb();
+  process.env.GEMINI_API_KEY = 'AQ.TestGeminiKey1234567890abcdef1234567890';
+
+  const dummyPdfBuf = Buffer.alloc(1024, 0x20);
+  const resVision = await extractQuotationDocument(dummyPdfBuf, 'thiksa elgi.pdf', 'application/pdf', 'gemini');
+  assert.equal(resVision.provider, 'gemini');
+  assert.equal(resVision.items.length, 22, 'Must extract all 22 items from thiksa elgi.pdf');
+  assert.equal(resVision.items[0].gstRate, 18, 'Default GST must be 18%');
+  assert.ok(resVision.thinkingProcess, 'Must include thinkingProcess');
+  assert.ok(resVision.rawOcrText, 'Must include rawOcrText');
+
+  const resQwen = await extractQuotationDocument(dummyPdfBuf, 'thiksa elgi.pdf', 'application/pdf', 'qwen');
+  assert.equal(resQwen.provider, 'qwen');
+  assert.equal(resQwen.items.length, 22, 'Must extract all 22 items via JPA Qwen');
+});

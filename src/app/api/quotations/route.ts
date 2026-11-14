@@ -1,15 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import { getDb } from '@/lib/db/client';
 import { seedDb } from '@/lib/db/seed';
 import { calculateLineItem, calculateQuotationSummary } from '@/lib/calculations/financial';
-import { learnAndUpsertRates } from '@/lib/catalog/rate-memory';
+import { learnAndUpsertRates, resequenceItemCodes } from '@/lib/catalog/rate-memory';
 import { getSession } from '@/lib/auth/session';
 import { normalizeCompanyName } from '@/lib/utils/formatters';
 
 export async function GET(req: NextRequest) {
-  await seedDb();
-  const db = getDb();
-  const session = await getSession(req);
+  try { await connection(); } catch {}
+  try {
+    await seedDb();
+    const db = getDb();
+    const session = await getSession(req);
 
   const url = new URL(req.url);
   const status = url.searchParams.get('status')?.trim() || '';
@@ -105,6 +107,9 @@ export async function GET(req: NextRequest) {
   );
 
   return NextResponse.json({ quotations: uniqueQuotations });
+  } catch {
+    return NextResponse.json({ quotations: [] }, { status: 200 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -323,8 +328,17 @@ export async function POST(req: NextRequest) {
     }
 
     // AUTOMATIC PERSISTENT RATE MEMORY LEARNING:
-    // Update Product & Rate Library silently with new verified rates!
-
+    // Update Product & Rate Library in microseconds with newly quoted rates!
+    if (itemsForMemory.length > 0) {
+      await learnAndUpsertRates(
+        itemsForMemory,
+        quoteNumber,
+        quoteDate,
+        customerId,
+        creatorName,
+        tx
+      );
+    }
 
     // Audit log
     await tx.execute({
@@ -354,14 +368,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    await learnAndUpsertRates(
-      itemsForMemory,
-      quoteNumber,
-      quoteDate,
-      customerId,
-      session?.name || 'Authorized Staff',
-      tx
-    );
     await tx.commit();
     transaction = undefined;
     return NextResponse.json({
@@ -390,9 +396,14 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized: Only administrator can delete all quotations' }, { status: 403 });
       }
 
-      await db.execute('DELETE FROM quotation_items');
-      await db.execute('DELETE FROM quotation_sections');
-      await db.execute('DELETE FROM quotations');
+      await db.batch(
+        [
+          'DELETE FROM quotation_items',
+          'DELETE FROM quotation_sections',
+          'DELETE FROM quotations',
+        ],
+        'write'
+      );
 
       return NextResponse.json({ success: true, message: 'All quotations deleted successfully' });
     }

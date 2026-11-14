@@ -135,31 +135,36 @@ export async function POST(req: NextRequest) {
         process.env.AWS_SECRET_ACCESS_KEY = cleanAws;
       }
 
-      try {
-        const envPath = path.join(process.cwd(), '.env.local');
-        if (fs.existsSync(envPath)) {
-          let content = fs.readFileSync(envPath, 'utf-8');
-          if (content.includes('HF_TOKEN=')) {
-            content = content.replace(/HF_TOKEN=.*/, `HF_TOKEN=${cleanToken}`);
-          } else if (cleanToken) {
-            content += `\nHF_TOKEN=${cleanToken}\n`;
-          }
-          if (content.includes('HF_MODEL_ID=' )) {
-            content = content.replace(/HF_MODEL_ID=.*/, `HF_MODEL_ID=${cleanModel}`);
-          } else if (cleanModel) {
-            content += `\nHF_MODEL_ID=${cleanModel}\n`;
-          }
-          if (cleanAws) {
-            if (content.includes('AWS_SECRET_ACCESS_KEY=')) {
-              content = content.replace(/AWS_SECRET_ACCESS_KEY=.*/, `AWS_SECRET_ACCESS_KEY=${cleanAws}`);
-            } else {
-              content += `\nAWS_SECRET_ACCESS_KEY=${cleanAws}\n`;
+      const isTestMode =
+        process.env.NODE_ENV === 'test' ||
+        Boolean(process.env.JPA_DATA_DIR && process.env.JPA_DATA_DIR.includes('test'));
+      if (!isTestMode) {
+        try {
+          const envPath = path.join(process.cwd(), '.env.local');
+          if (fs.existsSync(envPath)) {
+            let content = fs.readFileSync(envPath, 'utf-8');
+            if (content.includes('HF_TOKEN=')) {
+              content = content.replace(/HF_TOKEN=.*/, `HF_TOKEN=${cleanToken}`);
+            } else if (cleanToken) {
+              content += `\nHF_TOKEN=${cleanToken}\n`;
             }
+            if (content.includes('HF_MODEL_ID=' )) {
+              content = content.replace(/HF_MODEL_ID=.*/, `HF_MODEL_ID=${cleanModel}`);
+            } else if (cleanModel) {
+              content += `\nHF_MODEL_ID=${cleanModel}\n`;
+            }
+            if (cleanAws) {
+              if (content.includes('AWS_SECRET_ACCESS_KEY=')) {
+                content = content.replace(/AWS_SECRET_ACCESS_KEY=.*/, `AWS_SECRET_ACCESS_KEY=${cleanAws}`);
+              } else {
+                content += `\nAWS_SECRET_ACCESS_KEY=${cleanAws}\n`;
+              }
+            }
+            fs.writeFileSync(envPath, content, 'utf-8');
           }
-          fs.writeFileSync(envPath, content, 'utf-8');
+        } catch (e) {
+          console.warn('Could not update .env.local for Qwen:', e);
         }
-      } catch (e) {
-        console.warn('Could not update .env.local for Qwen:', e);
       }
 
       return NextResponse.json({
@@ -175,6 +180,7 @@ export async function POST(req: NextRequest) {
     // Google Gemini API Key path
     const cleanKey = rawKey;
     const isDemo =
+      cleanKey.startsWith('AQ.') ||
       cleanKey.includes('Demo') ||
       cleanKey.includes('test') ||
       cleanKey.includes('Test') ||
@@ -212,24 +218,29 @@ export async function POST(req: NextRequest) {
     process.env.GOOGLE_API_KEY = cleanKey;
 
     // 3. Persist in .env.local
-    try {
-      const envPath = path.join(process.cwd(), '.env.local');
-      if (fs.existsSync(envPath)) {
-        let content = fs.readFileSync(envPath, 'utf-8');
-        if (content.includes('GEMINI_API_KEY=')) {
-          content = content.replace(/GEMINI_API_KEY=.*/, `GEMINI_API_KEY=${cleanKey}`);
-        } else {
-          content += `\nGEMINI_API_KEY=${cleanKey}\n`;
+    const isTestMode =
+      process.env.NODE_ENV === 'test' ||
+      Boolean(process.env.JPA_DATA_DIR && process.env.JPA_DATA_DIR.includes('test'));
+    if (!isTestMode) {
+      try {
+        const envPath = path.join(process.cwd(), '.env.local');
+        if (fs.existsSync(envPath)) {
+          let content = fs.readFileSync(envPath, 'utf-8');
+          if (content.includes('GEMINI_API_KEY=')) {
+            content = content.replace(/GEMINI_API_KEY=.*/, `GEMINI_API_KEY=${cleanKey}`);
+          } else {
+            content += `\nGEMINI_API_KEY=${cleanKey}\n`;
+          }
+          if (content.includes('GOOGLE_API_KEY=')) {
+            content = content.replace(/GOOGLE_API_KEY=.*/, `GOOGLE_API_KEY=${cleanKey}`);
+          } else {
+            content += `\nGOOGLE_API_KEY=${cleanKey}\n`;
+          }
+          fs.writeFileSync(envPath, content, 'utf-8');
         }
-        if (content.includes('GOOGLE_API_KEY=')) {
-          content = content.replace(/GOOGLE_API_KEY=.*/, `GOOGLE_API_KEY=${cleanKey}`);
-        } else {
-          content += `\nGOOGLE_API_KEY=${cleanKey}\n`;
-        }
-        fs.writeFileSync(envPath, content, 'utf-8');
+      } catch (envErr) {
+        console.warn('Could not update .env.local:', envErr);
       }
-    } catch (envErr) {
-      console.warn('Could not update .env.local:', envErr);
     }
 
     return NextResponse.json({

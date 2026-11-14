@@ -91,18 +91,16 @@ export async function resequenceItemCodes(dbOrClient?: any): Promise<void> {
   if (!result.rows || result.rows.length === 0) return;
 
   const updates: { id: string; targetCode: string }[] = [];
-  let hasChanges = false;
 
   for (let i = 0; i < result.rows.length; i++) {
     const row = result.rows[i];
     const targetCode = `JPA-${String(i + 1).padStart(3, '0')}`;
     if (String(row.item_code || '').trim() !== targetCode) {
-      hasChanges = true;
+      updates.push({ id: String(row.id), targetCode });
     }
-    updates.push({ id: String(row.id), targetCode });
   }
 
-  if (!hasChanges) return;
+  if (updates.length === 0) return;
 
   for (const u of updates) {
     await db.execute({
@@ -363,6 +361,8 @@ export async function learnAndUpsertRates(
 ) {
   const db = executor || getDb();
   const now = new Date().toISOString();
+  const countRes = await db.execute(`SELECT COUNT(*) as cnt FROM products WHERE is_active = 1`);
+  let nextSeq = Number(countRes.rows[0]?.cnt || 0) + 1;
 
   for (const item of items) {
     const desc = item.description?.trim();
@@ -465,7 +465,7 @@ export async function learnAndUpsertRates(
     } else {
       // Create brand new product in central catalog with consecutive JPA Item Code!
       const newProdId = `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const nextItemCode = await getNextItemCode(db);
+      const nextItemCode = `JPA-${String(nextSeq++).padStart(3, '0')}`;
       const cat = desc.toLowerCase().includes('paper') || desc.toLowerCase().includes('pen') || desc.toLowerCase().includes('stapler')
         ? 'Stationery'
         : 'Housekeeping';

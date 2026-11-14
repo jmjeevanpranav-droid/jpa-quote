@@ -341,40 +341,46 @@ export default function CustomersPage() {
 
   const handleDeleteCustomer = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    const prev = customers;
+    setCustomers((p) => p.filter((c) => c.id !== id));
+    setToastNotification({
+      title: 'Saved Successfully',
+      details: `Deleted "${name}"`,
+    });
     try {
       const res = await fetch(`/api/customers?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
       if (!res.ok) {
+        setCustomers(prev);
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to delete customer');
       }
-      setCustomers((prev) => prev.filter((c) => c.id !== id));
-      setToastNotification({
-        title: 'Saved Successfully',
-        details: `Deleted "${name}"`,
-      });
     } catch (err: any) {
+      setCustomers(prev);
       alert(`Delete error: ${err.message}`);
     }
   };
 
   const handleDeleteAll = async () => {
     if (!confirm('Are you sure you want to DELETE ALL registered customers? This cannot be undone.')) return;
+    const prev = customers;
+    setCustomers([]);
+    setToastNotification({
+      title: 'Saved Successfully',
+      details: 'All customer accounts cleared',
+    });
     try {
       const res = await fetch('/api/customers?all=true', {
         method: 'DELETE',
       });
       if (!res.ok) {
+        setCustomers(prev);
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Failed to delete all customers');
       }
-      setCustomers([]);
-      setToastNotification({
-        title: 'Saved Successfully',
-        details: 'All customer accounts cleared',
-      });
     } catch (err: any) {
+      setCustomers(prev);
       alert(`Delete error: ${err.message}`);
     }
   };

@@ -58,10 +58,13 @@ export function AccountSwitcherModal({ isOpen, onClose }: AccountSwitcherModalPr
 
   const handleSignInAnother = (newWindow: boolean = false) => {
     onClose();
+    const loginUrl = window.location.hostname.endsWith('.hf.space')
+      ? '/login.html?switch=true'
+      : '/login?switch=true';
     if (newWindow) {
-      window.open('/login?switch=true', '_blank');
+      window.open(loginUrl, '_blank');
     } else {
-      window.location.href = '/login?switch=true';
+      window.location.href = loginUrl;
     }
   };
 
@@ -72,7 +75,7 @@ export function AccountSwitcherModal({ isOpen, onClose }: AccountSwitcherModalPr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md mac-modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="account-switcher-title"
@@ -81,7 +84,7 @@ export function AccountSwitcherModal({ isOpen, onClose }: AccountSwitcherModalPr
       <div className="fixed inset-0" onClick={onClose} aria-hidden="true" />
 
       {/* Modal Dialog */}
-      <div className="relative z-10 w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative z-10 w-full max-w-md bg-white/95 backdrop-blur-xl rounded-3xl mac-modal-content border border-white/80 shadow-[0_25px_70px_rgba(15,23,42,0.3)] overflow-hidden flex flex-col max-h-[90vh] ring-1 ring-slate-900/5">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80">
           <div className="flex items-center gap-2.5">

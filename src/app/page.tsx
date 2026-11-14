@@ -21,6 +21,10 @@ import {
   Plus,
 } from 'lucide-react';
 import { formatINR } from '@/lib/calculations/financial';
+import {
+  hydrateInstantRateCacheFromProducts,
+  subscribeToRealtimeRateSync,
+} from '@/lib/realtime/microsecond-sync';
 
 export default function DashboardPage() {
   const [quotations, setQuotations] = useState<any[]>([]);
@@ -34,39 +38,87 @@ export default function DashboardPage() {
 
   const SPOTLIGHT_LIMIT = 5;
 
+  const safeJson = async (r: Response) => {
+    try {
+      const text = await r.text();
+      return text && text.trim() ? JSON.parse(text) : {};
+    } catch {
+      return {};
+    }
+  };
+
   const loadData = () => {
     Promise.all([
-      fetch('/api/quotations').then((r) => r.json()),
-      fetch('/api/products').then((r) => r.json()),
+      fetch('/api/quotations').then(safeJson),
+      fetch('/api/products').then(safeJson),
     ])
       .then(([qData, pData]) => {
         setQuotations(qData.quotations || []);
-        setProducts(pData.products || []);
+        const prodList = pData.products || [];
+        setProducts(prodList);
+        hydrateInstantRateCacheFromProducts(prodList);
       })
-      .catch((err) => console.error('Dashboard load error:', err))
+      .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  const fetchLatestSpotlight = async (silent = false) => {
+  const fetchLatestSpotlight = async (_silent = false) => {
     try {
       const res = await fetch(`/api/products?sort=latest&limit=${SPOTLIGHT_LIMIT}&offset=0`, {
         cache: 'no-store',
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (data.products && Array.isArray(data.products)) {
-        setSpotlightRates(data.products.slice(0, SPOTLIGHT_LIMIT));
+        let merged = [...data.products];
+        try {
+          const cachedRaw = localStorage.getItem('jpa_spotlight_rates');
+          if (cachedRaw) {
+            const cachedList = JSON.parse(cachedRaw);
+            if (Array.isArray(cachedList)) {
+              for (const c of cachedList) {
+                if (!c || !c.description) continue;
+                const cTime = c.updated_at ? new Date(c.updated_at).getTime() : 0;
+                const existingIdx = merged.findIndex(
+                  (m) =>
+                    m.id === c.id ||
+                    String(m.description || '').trim().toLowerCase() ===
+                      String(c.description || '').trim().toLowerCase()
+                );
+                if (existingIdx >= 0) {
+                  const mTime = merged[existingIdx].updated_at
+                    ? new Date(merged[existingIdx].updated_at).getTime()
+                    : 0;
+                  if (cTime > mTime) {
+                    merged[existingIdx] = { ...merged[existingIdx], ...c };
+                  }
+                } else if (Date.now() - cTime < 60000) {
+                  merged.unshift(c);
+                }
+              }
+            }
+          }
+        } catch {}
+
+        merged.sort((a, b) => {
+          const tA = new Date(a.updated_at || a.created_at || 0).getTime();
+          const tB = new Date(b.updated_at || b.created_at || 0).getTime();
+          return tB - tA;
+        });
+
+        const topItems = merged.slice(0, SPOTLIGHT_LIMIT);
+        setSpotlightRates(topItems);
         if (typeof data.total === 'number') {
           setTotalRates(data.total);
         }
         try {
-          localStorage.setItem('jpa_spotlight_rates', JSON.stringify(data.products.slice(0, SPOTLIGHT_LIMIT)));
+          localStorage.setItem('jpa_spotlight_rates', JSON.stringify(topItems));
           if (typeof data.total === 'number') {
             localStorage.setItem('jpa_spotlight_total', String(data.total));
           }
         } catch (_) {}
       }
-    } catch (err) {
-      if (!silent) console.error('Error fetching spotlight rates:', err);
+    } catch {
+      // Transient fetch abort during navigation
     }
   };
 
@@ -90,10 +142,12 @@ export default function DashboardPage() {
     loadData();
     fetchLatestSpotlight();
 
-    // 3. Continuous polling every 4 seconds to pick up new rates automatically
+    // 3. Continuous polling every 12 seconds when visible to pick up new rates without UI lag
     const pollInterval = setInterval(() => {
-      fetchLatestSpotlight(true);
-    }, 4000);
+      if (document.visibilityState === 'visible') {
+        fetchLatestSpotlight(true);
+      }
+    }, 12000);
 
     // 4. Focus, visibility, storage, and custom event listeners
     const handleRefresh = () => {
@@ -109,8 +163,29 @@ export default function DashboardPage() {
     window.addEventListener('storage', handleRefresh);
     window.addEventListener('jpa-rate-saved', handleRefresh);
 
+    const unsubscribeRealtime = subscribeToRealtimeRateSync(({ records }) => {
+      if (records && records.length > 0) {
+        setSpotlightRates((prev) => {
+          const combined = [...records, ...prev];
+          const deduped: any[] = [];
+          const seen = new Set<string>();
+          for (const item of combined) {
+            if (!item || !item.description) continue;
+            const key = String(item.description).trim().toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              deduped.push(item);
+            }
+          }
+          return deduped.slice(0, SPOTLIGHT_LIMIT);
+        });
+      }
+      fetchLatestSpotlight(true);
+    });
+
     return () => {
       clearInterval(pollInterval);
+      unsubscribeRealtime();
       window.removeEventListener('focus', handleRefresh);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('storage', handleRefresh);
@@ -408,7 +483,9 @@ export default function DashboardPage() {
           } catch (e) {
             console.error('Failed to stash AI import in sessionStorage:', e);
           }
-          window.location.href = '/quotations/new';
+          window.location.href = window.location.hostname.endsWith('.hf.space')
+            ? '/quotations/new.html'
+            : '/quotations/new';
         }}
       />
     </div>

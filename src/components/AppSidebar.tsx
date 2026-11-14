@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   FilePlus2,
@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   ArrowLeftRight,
   Camera,
+  UserCheck,
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { AccountSwitcherModal } from './AccountSwitcherModal';
@@ -42,12 +43,15 @@ let cachedAuthMeUser: UserInfo | null = null;
 let cachedAuthMeAt = 0;
 let inflightAuthMe: Promise<UserInfo | null> | null = null;
 let hasSidebarHydratedOnce = false;
+let hasPrefetchedRoutesOnce = false;
 let persistedDesktopCollapsed: boolean | null = null;
 let persistedNavScrollTop = 0;
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() =>
     hasSidebarHydratedOnce && persistedDesktopCollapsed !== null
@@ -72,26 +76,36 @@ export function AppSidebar() {
   const widthAnimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevPathnameRef = useRef<string>(pathname);
   const desktopNavScrollRef = useRef<HTMLDivElement | null>(null);
+  const isCollapsedRef = useRef<boolean>(isCollapsed);
+  isCollapsedRef.current = isCollapsed;
+  const lastToggleAtRef = useRef<number>(0);
 
-  const toggleDesktopCollapse = useCallback(() => {
+  const toggleDesktopCollapse = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const now = Date.now();
+    if (now - lastToggleAtRef.current < 260) return;
+    lastToggleAtRef.current = now;
+
     if (widthAnimTimerRef.current) {
       clearTimeout(widthAnimTimerRef.current);
     }
+
+    const next = !isCollapsedRef.current;
+    isCollapsedRef.current = next;
+    persistedDesktopCollapsed = next;
+    if (typeof window !== 'undefined') {
+      (window as any).__jpa_sidebar_collapsed = next;
+      try {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      } catch {}
+    }
+
     setAnimateWidth(true);
-    setIsCollapsed((prev) => {
-      const next = !prev;
-      persistedDesktopCollapsed = next;
-      if (typeof window !== 'undefined') {
-        (window as any).__jpa_sidebar_collapsed = next;
-        try {
-          localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
-        } catch {}
-      }
-      return next;
-    });
+    setIsCollapsed(next);
+
     widthAnimTimerRef.current = setTimeout(() => {
       setAnimateWidth(false);
-    }, 340);
+    }, 300);
   }, []);
 
   // Track user session and collapse listeners
@@ -101,7 +115,10 @@ export function AppSidebar() {
         const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
         persistedDesktopCollapsed = stored === 'true';
       }
-      setIsCollapsed(persistedDesktopCollapsed);
+      if (persistedDesktopCollapsed !== isCollapsedRef.current) {
+        isCollapsedRef.current = persistedDesktopCollapsed;
+        setIsCollapsed(persistedDesktopCollapsed);
+      }
     } catch {}
 
     hasSidebarHydratedOnce = true;
@@ -171,7 +188,7 @@ export function AppSidebar() {
     } else {
       if (!inflightAuthMe) {
         const headers: Record<string, string> = {};
-        if (activeSession?.token) {
+        if (activeSession?.token && activeSession.token.length <= 1024) {
           headers['x-jpa-session-token'] = activeSession.token;
           headers['Authorization'] = `Bearer ${activeSession.token}`;
         }
@@ -215,8 +232,9 @@ export function AppSidebar() {
     };
   }, [toggleDesktopCollapse]);
 
-  // Close mobile drawer only when pathname actually changes after mount
+  // Close mobile drawer and clear optimistic active state when pathname actually changes
   useEffect(() => {
+    setPendingHref(null);
     if (prevPathnameRef.current !== pathname) {
       prevPathnameRef.current = pathname;
       setMobileOpen(false);
@@ -291,22 +309,41 @@ export function AppSidebar() {
     { href: '/customers', label: 'Customers', icon: Users2 },
     { href: '/reports', label: 'Reports', icon: BarChart3 },
     { href: '/settings', label: 'Administrator Portal', icon: Settings, badge: 'Admin', adminOnly: true },
+    { href: '/settings/employees', label: 'Registered Employees', icon: UserCheck, badge: 'Vision', adminOnly: true },
   ];
 
   const navItems = baseNavItems.filter((item) => !item.adminOnly || isAdmin);
 
-  const renderNavLinks = (isMobile = false) => (
+  // Prefetch all sidebar routes once per browser session so page switching has zero lag
+  useEffect(() => {
+    if (hasPrefetchedRoutesOnce) return;
+    hasPrefetchedRoutesOnce = true;
+    const timer = setTimeout(() => {
+      for (const item of navItems) {
+        try {
+          router.prefetch(item.href);
+        } catch {}
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [navItems, router]);
+
+  const renderNavLinks = (isMobile = false) => {
+    const activePath = pendingHref || pathname;
+    return (
     <nav className="space-y-1.5" aria-label="Main Navigation">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive =
           item.href === '/quotations/new'
-            ? pathname === '/quotations/new'
+            ? activePath === '/quotations/new'
             : item.href === '/quotations'
-            ? pathname.startsWith('/quotations') && pathname !== '/quotations/new'
+            ? activePath.startsWith('/quotations') && activePath !== '/quotations/new'
+            : item.href === '/settings'
+            ? activePath === '/settings'
             : item.href === '/'
-            ? pathname === '/'
-            : pathname.startsWith(item.href);
+            ? activePath === '/'
+            : activePath.startsWith(item.href);
 
         const showCompact = !isMobile && isCollapsed;
 
@@ -314,13 +351,23 @@ export function AppSidebar() {
           <div key={item.href} className="relative group">
             <Link
               href={item.href}
+              prefetch={true}
+              onMouseEnter={() => router.prefetch(item.href)}
+              onPointerDown={() => {
+                if (item.href !== pathname) {
+                  setPendingHref(item.href);
+                }
+              }}
               onClick={() => {
-                if (isMobile && item.href === pathname) {
+                if (item.href !== pathname) {
+                  setPendingHref(item.href);
+                }
+                if (isMobile) {
                   setMobileOpen(false);
                 }
               }}
               title={showCompact ? item.label : undefined}
-              className={`flex items-center rounded-2xl font-bold transition-colors duration-150 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-600 ${
+              className={`flex items-center rounded-2xl font-bold cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-blue-600 ${
                 showCompact
                   ? 'justify-center px-3 py-2.5 h-11.5 w-11.5 mx-auto gap-0'
                   : 'px-3.5 py-2.5 sm:py-3 text-[11.5pt] gap-3'
@@ -328,8 +375,8 @@ export function AppSidebar() {
                 isActive
                   ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25 ring-1 ring-blue-500/50'
                   : item.highlight
-                  ? 'bg-blue-50/90 text-blue-700 hover:bg-blue-100/90 border border-blue-200/80'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90'
+                  ? 'bg-blue-50/90 text-blue-700 hover:bg-blue-100/90 border border-blue-200/80 transition-colors duration-75'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-75'
               }`}
             >
               <Icon
@@ -378,7 +425,8 @@ export function AppSidebar() {
         );
       })}
     </nav>
-  );
+    );
+  };
 
   return (
     <>
@@ -396,9 +444,9 @@ export function AppSidebar() {
         aria-hidden={!mobileOpen}
         aria-label="Mobile Navigation"
       >
-        {/* Dimmed Glass Backdrop */}
+        {/* Dimmed Backdrop (GPU-friendly opacity only, no heavy blur lag) */}
         <div
-          className={`fixed inset-0 bg-slate-900/50 backdrop-blur-[2px] transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+          className={`fixed inset-0 bg-slate-900/50 transition-opacity duration-200 ease-out motion-reduce:transition-none ${
             mobileOpen ? 'opacity-100' : 'opacity-0'
           }`}
           onClick={() => {
@@ -419,10 +467,10 @@ export function AppSidebar() {
               : 'translate3d(-102%, 0, 0)',
             transition: isDragging
               ? 'none'
-              : 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+              : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
             willChange: 'transform',
           }}
-          className="relative z-10 w-74 max-w-[84vw] h-dvh bg-white/95 backdrop-blur-2xl border-r border-white/80 shadow-[0_24px_60px_rgba(15,23,42,0.28)] flex flex-col select-none"
+          className="relative z-10 w-74 max-w-[84vw] h-dvh bg-white border-r border-slate-200 shadow-[0_24px_60px_rgba(15,23,42,0.28)] flex flex-col select-none"
         >
           {/* Drawer Header */}
           <div className="flex items-center justify-between h-15 px-4 border-b border-slate-200/80 bg-white/90">
@@ -536,7 +584,7 @@ export function AppSidebar() {
               </div>
               <button
                 type="button"
-                onClick={toggleDesktopCollapse}
+                onClick={(e) => toggleDesktopCollapse(e)}
                 aria-label="Collapse sidebar"
                 aria-expanded="true"
                 title="Collapse sidebar"
@@ -549,7 +597,7 @@ export function AppSidebar() {
             <div className="w-full flex items-center justify-center">
               <button
                 type="button"
-                onClick={toggleDesktopCollapse}
+                onClick={(e) => toggleDesktopCollapse(e)}
                 aria-label="Expand sidebar"
                 aria-expanded="false"
                 title="Expand sidebar"

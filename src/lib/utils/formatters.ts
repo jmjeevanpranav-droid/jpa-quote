@@ -41,3 +41,37 @@ export function normalizeCompanyName(name: string): string {
   return clean;
 }
 
+/**
+ * Normalizes a phone number to extract its core 10 digits for flexible matching.
+ * Examples:
+ * - "+91 9790600971" -> "9790600971"
+ * - "+919790600971"  -> "9790600971"
+ * - "09790600971"    -> "9790600971"
+ * - "97906 00971"    -> "9790600971"
+ * - "9790600971"     -> "9790600971"
+ */
+export function normalizePhoneNumber(phone: string | null | undefined): string {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits.slice(2);
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.slice(1);
+  }
+  return digits;
+}
+
+/**
+ * Standardizes a phone number to Indian display format: "+91 XXXXXXXXXX"
+ */
+export function formatPhoneNumber(phone: string | null | undefined): string {
+  if (!phone) return '';
+  const norm = normalizePhoneNumber(phone);
+  if (norm.length === 10) {
+    return `+91 ${norm}`;
+  }
+  return String(phone).trim();
+}
+
+

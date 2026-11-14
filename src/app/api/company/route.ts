@@ -1,21 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import { getDb } from '@/lib/db/client';
 import { seedDb } from '@/lib/db/seed';
 
 export async function GET() {
-  await seedDb();
-  const db = getDb();
-  const result = await db.execute('SELECT * FROM company_profiles WHERE is_default = 1 LIMIT 1');
-  return NextResponse.json(
-    { profile: result.rows[0] || null },
-    {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      },
-    }
-  );
+  try { await connection(); } catch {}
+  try {
+    await seedDb();
+    const db = getDb();
+    const result = await db.execute('SELECT * FROM company_profiles WHERE is_default = 1 LIMIT 1');
+    return NextResponse.json(
+      { profile: result.rows[0] || null },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
+  } catch {
+    return NextResponse.json({ profile: null }, { status: 200 });
+  }
 }
 
 export async function PUT(req: NextRequest) {

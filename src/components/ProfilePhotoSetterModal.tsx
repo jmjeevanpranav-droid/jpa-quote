@@ -279,12 +279,12 @@ export function ProfilePhotoSetterModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 overflow-y-auto animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md overflow-y-auto mac-modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="photo-setter-title"
     >
-      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in zoom-in-95 duration-150">
+      <div className="w-full max-w-lg rounded-3xl bg-white/95 backdrop-blur-xl mac-modal-content border border-white/80 shadow-[0_25px_70px_rgba(15,23,42,0.3)] overflow-hidden my-auto ring-1 ring-slate-900/5">
         {/* Modal Header */}
         <div className="p-5 sm:p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3">

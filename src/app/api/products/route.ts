@@ -1,12 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import { getDb } from '@/lib/db/client';
 import { seedDb } from '@/lib/db/seed';
 import { normalizeItemText, getNextItemCode, backfillMissingItemCodes, resequenceItemCodes } from '@/lib/catalog/rate-memory';
 import { getSession } from '@/lib/auth/session';
 
 export async function GET(req: NextRequest) {
-  await seedDb();
-  const db = getDb();
+  try { await connection(); } catch {}
+  try {
+    await seedDb();
+    const db = getDb();
 
   // Auto-resequence any gaps or missing item codes to strictly consecutive JPA-001, JPA-002, etc.
   await resequenceItemCodes(db);
@@ -76,6 +78,9 @@ export async function GET(req: NextRequest) {
       },
     }
   );
+  } catch {
+    return NextResponse.json({ products: [], total: 0 }, { status: 200 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -274,11 +279,17 @@ export async function DELETE(req: NextRequest) {
     const all = url.searchParams.get('all');
 
     if (all === 'true') {
-      await db.execute('DELETE FROM product_rates');
-      await db.execute('DELETE FROM rate_change_history');
-      await db.execute('DELETE FROM product_aliases');
-      const res = await db.execute('DELETE FROM products');
-      return NextResponse.json({ success: true, deleted: res.rowsAffected });
+      const results = await db.batch(
+        [
+          'DELETE FROM product_rates',
+          'DELETE FROM rate_change_history',
+          'DELETE FROM product_aliases',
+          'DELETE FROM products',
+          "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('rate_library_cleared', '1', datetime('now'))",
+        ],
+        'write'
+      );
+      return NextResponse.json({ success: true, deleted: results[3].rowsAffected });
     }
 
     if (id) {

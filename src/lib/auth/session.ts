@@ -12,11 +12,14 @@ export { SESSION_COOKIE_NAME, signSessionToken, verifySessionToken };
 export async function createSession(user: UserSession, rememberMe: boolean = false): Promise<string> {
   const token = await signSessionToken(user, rememberMe);
   try {
+    const headerList = await headers();
+    const forwardedProto = headerList.get('x-forwarded-proto');
+    const isHttps = forwardedProto === 'https' || Boolean(process.env.SPACE_ID || process.env.VERCEL);
     const cookieStore = await cookies();
     cookieStore.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isHttps,
+      sameSite: isHttps ? 'none' : 'lax',
       path: '/',
       maxAge: rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60,
     });

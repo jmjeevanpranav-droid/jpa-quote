@@ -281,6 +281,55 @@ export function AiImportModal({
     }
   };
 
+  const optimizeImageForCloudUpload = async (inputFile: File): Promise<File> => {
+    if (!inputFile.type.startsWith('image/') || inputFile.size <= 1.5 * 1024 * 1024) {
+      return inputFile;
+    }
+    return new Promise((resolve) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(inputFile);
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        const maxDim = 2048;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(inputFile);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(inputFile);
+              return;
+            }
+            resolve(new File([blob], inputFile.name, { type: 'image/jpeg', lastModified: Date.now() }));
+          },
+          'image/jpeg',
+          0.88
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        resolve(inputFile);
+      };
+      img.src = objUrl;
+    });
+  };
+
   const handleUploadAndAnalyze = async () => {
     if (!file) return;
 
@@ -289,8 +338,10 @@ export function AiImportModal({
     activeRequest.current = controller;
     setIsProcessing(true);
     setErrorMessage('');
+
+    const uploadFile = await optimizeImageForCloudUpload(file);
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', uploadFile);
     formData.append('engine', selectedModel);
 
     try {

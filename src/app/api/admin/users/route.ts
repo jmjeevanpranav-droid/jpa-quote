@@ -1,9 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import { getDb } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/session';
 import { seedDb } from '@/lib/db/seed';
+import { normalizePhoneNumber, formatPhoneNumber } from '@/lib/utils/formatters';
+import bcrypt from 'bcryptjs';
 
 export async function GET(req: NextRequest) {
+  try { await connection(); } catch {}
   await seedDb();
   const session = await getSession(req);
 
@@ -163,6 +166,207 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export async function POST(req: NextRequest) {
+  await seedDb();
+  const session = await getSession(req);
+
+  if (!session || session.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden: Administrator privileges required.' }, { status: 403 });
+  }
+
+  try {
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const { name, contact, phnumber, email, gmail, password, role } = body;
+
+    const cleanName = typeof name === 'string' ? name.trim() : '';
+    const rawPhone = typeof (contact || phnumber) === 'string' ? String(contact || phnumber).trim() : '';
+    const cleanGmail = typeof (email || gmail) === 'string' ? String(email || gmail).toLowerCase().trim() : '';
+    const cleanPassword = typeof password === 'string' ? password : '';
+    const cleanRole = role === 'admin' ? 'admin' : 'staff';
+
+    // Required Field 1: Name
+    if (!cleanName || cleanName.length < 2) {
+      return NextResponse.json({ error: 'Please enter the employee name (at least 2 characters).' }, { status: 400 });
+    }
+
+    // Required Field 2: Phnumber (Phone Number)
+    const normPhone = normalizePhoneNumber(rawPhone);
+    if (!normPhone || normPhone.length < 10) {
+      return NextResponse.json({ error: 'Please enter a valid 10-digit phone number.' }, { status: 400 });
+    }
+    const formattedPhone = formatPhoneNumber(rawPhone);
+
+    // Required Field 3: Gmail
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanGmail || !emailRegex.test(cleanGmail)) {
+      return NextResponse.json({ error: 'Please provide a valid Gmail / Email address.' }, { status: 400 });
+    }
+
+    // Required Field 4: Password
+    if (!cleanPassword || cleanPassword.length < 6) {
+      return NextResponse.json({ error: 'Password must be at least 6 characters long.' }, { status: 400 });
+    }
+
+    const db = getDb();
+
+    // Check for duplicate or existing employee by Gmail or Phone Number
+    const existing = await db.execute({
+      sql: `SELECT id, email, name, contact, role FROM users 
+            WHERE LOWER(email) = LOWER(?) 
+               OR contact IN (?, ?, ?)
+            LIMIT 1`,
+      args: [cleanGmail, formattedPhone, normPhone, `+91${normPhone}`],
+    });
+
+    let matchedUserId: string | null = null;
+    if (existing.rows.length > 0) {
+      const match = existing.rows[0];
+      const matchId = String(match.id);
+      const matchEmail = String(match.email).toLowerCase();
+
+      if (matchId === 'usr_admin_1' || matchEmail === 'jeevanpranavagencies@gmail.com') {
+        return NextResponse.json(
+          { error: 'Cannot modify or reassign Master Administrator account credentials.' },
+          { status: 400 }
+        );
+      }
+      matchedUserId = matchId;
+    } else {
+      // Additional candidate check for formatted phone variations
+      const phoneCandidates = await db.execute({
+        sql: 'SELECT id, email, contact FROM users WHERE contact LIKE ? LIMIT 5',
+        args: [`%${normPhone}%`],
+      });
+      for (const cand of phoneCandidates.rows) {
+        if (cand.contact && normalizePhoneNumber(String(cand.contact)) === normPhone) {
+          const candId = String(cand.id);
+          if (candId === 'usr_admin_1') {
+            return NextResponse.json(
+              { error: 'This phone number is reserved for Master Administrator N Jayakumar.' },
+              { status: 400 }
+            );
+          }
+          matchedUserId = candId;
+          break;
+        }
+      }
+    }
+
+    // High-grade salted bcrypt hash for bulletproof password encryption
+    const passwordHash = await bcrypt.hash(cleanPassword, 10);
+    const now = new Date().toISOString();
+
+    if (matchedUserId) {
+      // Seamlessly sync existing employee: update credentials & set new password
+      await db.execute({
+        sql: `UPDATE users 
+              SET name = ?, contact = ?, email = ?, password_hash = ?, role = ?, last_active_at = ?
+              WHERE id = ?`,
+        args: [cleanName, formattedPhone, cleanGmail, passwordHash, cleanRole, now, matchedUserId],
+      });
+
+      // Audit log employee credential sync/update by administrator
+      await db.execute({
+        sql: `INSERT INTO audit_events (id, user_id, action, entity_type, entity_id, details_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          session.userId,
+          'EMPLOYEE_SYNCED_BY_ADMIN',
+          'user',
+          matchedUserId,
+          JSON.stringify({
+            updatedById: session.userId,
+            updatedByName: session.name,
+            employeeId: matchedUserId,
+            email: cleanGmail,
+            name: cleanName,
+            contact: formattedPhone,
+            role: cleanRole,
+            passwordReset: true,
+          }),
+          now,
+        ],
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Employee "${cleanName}" credentials synced successfully. Ready to sign in.`,
+        user: {
+          id: matchedUserId,
+          email: cleanGmail,
+          name: cleanName,
+          contact: formattedPhone,
+          role: cleanRole,
+          created_at: now,
+          last_sign_in_at: null,
+          last_active_at: now,
+          metrics: { quoteCount: 0, totalValue: 0, approvedCount: 0, draftCount: 0 },
+          quotations: [],
+          activities: [],
+        },
+      });
+    }
+
+    // Brand new employee account creation
+    const userId = `usr_emp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    await db.execute({
+      sql: `INSERT INTO users (id, email, name, contact, role, password_hash, last_sign_in_at, last_active_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
+      args: [userId, cleanGmail, cleanName, formattedPhone, cleanRole, passwordHash, now],
+    });
+
+    // Audit log employee creation by administrator
+    await db.execute({
+      sql: `INSERT INTO audit_events (id, user_id, action, entity_type, entity_id, details_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        session.userId,
+        'EMPLOYEE_CREATED_BY_ADMIN',
+        'user',
+        userId,
+        JSON.stringify({
+          createdById: session.userId,
+          createdByName: session.name,
+          employeeId: userId,
+          email: cleanGmail,
+          name: cleanName,
+          contact: formattedPhone,
+          role: cleanRole,
+        }),
+        now,
+      ],
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Employee "${cleanName}" registered successfully.`,
+      user: {
+        id: userId,
+        email: cleanGmail,
+        name: cleanName,
+        contact: formattedPhone,
+        role: cleanRole,
+        created_at: now,
+        last_sign_in_at: null,
+        last_active_at: null,
+        metrics: { quoteCount: 0, totalValue: 0, approvedCount: 0, draftCount: 0 },
+        quotations: [],
+        activities: [],
+      },
+    });
+  } catch (err: any) {
+    console.error('Failed to create employee:', err);
+    return NextResponse.json({ error: 'Failed to create employee account' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: NextRequest) {
   await seedDb();
   const session = await getSession(req);
@@ -173,27 +377,163 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { userId, role } = body;
+    const { userId, name, contact, phnumber, email, gmail, password, role } = body;
 
-    if (!userId || !role || !['admin', 'staff'].includes(role)) {
-      return NextResponse.json({ error: 'Invalid user ID or role' }, { status: 400 });
+    if (!userId || typeof userId !== 'string') {
+      return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
     }
 
     const db = getDb();
+    const existingUserRes = await db.execute({
+      sql: 'SELECT id, email, name, contact, role FROM users WHERE id = ? LIMIT 1',
+      args: [userId],
+    });
+
+    if (existingUserRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Employee account not found.' }, { status: 404 });
+    }
+
+    const current = existingUserRes.rows[0];
+    const currentEmail = String(current.email || '').toLowerCase();
+    const currentName = String(current.name || '');
 
     // Prevent demoting primary administrator
-    if (userId === 'usr_admin_1' && role !== 'admin') {
+    const nextRole = role ? (role === 'admin' ? 'admin' : 'staff') : String(current.role);
+    if ((userId === 'usr_admin_1' || currentEmail === 'jeevanpranavagencies@gmail.com') && nextRole !== 'admin') {
       return NextResponse.json({ error: 'Cannot demote the primary Administrator account.' }, { status: 400 });
     }
 
+    const updates: string[] = [];
+    const args: any[] = [];
+
+    let cleanName = currentName;
+    if (name !== undefined) {
+      cleanName = typeof name === 'string' ? name.trim() : '';
+      if (!cleanName || cleanName.length < 2) {
+        return NextResponse.json({ error: 'Please enter the employee name (at least 2 characters).' }, { status: 400 });
+      }
+      updates.push('name = ?');
+      args.push(cleanName);
+    }
+
+    const rawPhoneInput = contact !== undefined ? contact : phnumber;
+    let formattedPhone = String(current.contact || '');
+    if (rawPhoneInput !== undefined) {
+      const rawPhone = typeof rawPhoneInput === 'string' ? rawPhoneInput.trim() : '';
+      const normPhone = normalizePhoneNumber(rawPhone);
+      if (!normPhone || normPhone.length < 10) {
+        return NextResponse.json({ error: 'Please enter a valid 10-digit phone number.' }, { status: 400 });
+      }
+      formattedPhone = formatPhoneNumber(rawPhone);
+
+      const phoneCandidates = await db.execute({
+        sql: 'SELECT id, contact FROM users WHERE id != ? AND contact LIKE ? LIMIT 10',
+        args: [userId, `%${normPhone}%`],
+      });
+      for (const cand of phoneCandidates.rows) {
+        if (cand.contact && normalizePhoneNumber(String(cand.contact)) === normPhone) {
+          return NextResponse.json(
+            { error: 'Another employee account already uses this Phone Number.' },
+            { status: 409 }
+          );
+        }
+      }
+      updates.push('contact = ?');
+      args.push(formattedPhone);
+    }
+
+    const rawEmailInput = email !== undefined ? email : gmail;
+    let cleanGmail = currentEmail;
+    if (rawEmailInput !== undefined) {
+      cleanGmail = typeof rawEmailInput === 'string' ? rawEmailInput.toLowerCase().trim() : '';
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!cleanGmail || !emailRegex.test(cleanGmail)) {
+        return NextResponse.json({ error: 'Please provide a valid Gmail / Email address.' }, { status: 400 });
+      }
+      const dupEmail = await db.execute({
+        sql: 'SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ? LIMIT 1',
+        args: [cleanGmail, userId],
+      });
+      if (dupEmail.rows.length > 0) {
+        return NextResponse.json(
+          { error: 'Another employee account already uses this Gmail address.' },
+          { status: 409 }
+        );
+      }
+      updates.push('email = ?');
+      args.push(cleanGmail);
+    }
+
+    if (typeof password === 'string' && password.length > 0) {
+      if (password.length < 6) {
+        return NextResponse.json({ error: 'New password must be at least 6 characters long.' }, { status: 400 });
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      updates.push('password_hash = ?');
+      args.push(passwordHash);
+    }
+
+    if (role !== undefined && ['admin', 'staff'].includes(role)) {
+      updates.push('role = ?');
+      args.push(nextRole);
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json({ error: 'No fields provided to update.' }, { status: 400 });
+    }
+
+    args.push(userId);
     await db.execute({
-      sql: 'UPDATE users SET role = ? WHERE id = ?',
-      args: [role, userId],
+      sql: `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      args,
     });
 
-    return NextResponse.json({ success: true, message: `Role updated to ${role}` });
+    // Keep quotations' created_by display name synced when employee name changes
+    if (cleanName !== currentName) {
+      await db.execute({
+        sql: 'UPDATE quotations SET created_by = ? WHERE created_by_id = ?',
+        args: [cleanName, userId],
+      });
+    }
+
+    const now = new Date().toISOString();
+    await db.execute({
+      sql: `INSERT INTO audit_events (id, user_id, action, entity_type, entity_id, details_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        session.userId,
+        'EMPLOYEE_UPDATED_BY_ADMIN',
+        'user',
+        userId,
+        JSON.stringify({
+          updatedById: session.userId,
+          updatedByEmail: session.email,
+          employeeId: userId,
+          name: cleanName,
+          email: cleanGmail,
+          contact: formattedPhone,
+          role: nextRole,
+          passwordReset: Boolean(typeof password === 'string' && password.length > 0),
+        }),
+        now,
+      ],
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Employee "${cleanName}" updated successfully.`,
+      user: {
+        id: userId,
+        name: cleanName,
+        email: cleanGmail,
+        contact: formattedPhone,
+        role: nextRole,
+      },
+    });
   } catch (err: any) {
-    return NextResponse.json({ error: 'Failed to update user role' }, { status: 500 });
+    console.error('Failed to update employee:', err);
+    return NextResponse.json({ error: 'Failed to update employee details' }, { status: 500 });
   }
 }
 

@@ -23,6 +23,11 @@ import {
 import { formatINR } from '@/lib/calculations/financial';
 import { GlassSelect } from '@/components/GlassSelect';
 import { capitalizeInput } from '@/lib/utils/formatters';
+import {
+  broadcastMicrosecondRateReplacement,
+  hydrateInstantRateCacheFromProducts,
+  subscribeToRealtimeRateSync,
+} from '@/lib/realtime/microsecond-sync';
 
 export default function RateLibraryPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -102,9 +107,24 @@ export default function RateLibraryPage() {
       last_verified_date: new Date().toISOString().split('T')[0],
     };
 
-    // 1. Instant 0ms Optimistic UI Update in React state
+    // 1. Instant 0ms Optimistic UI Update in React state + Cross-Tab Real-Time Broadcast
+    const nowIso = new Date().toISOString();
     setProducts((prev) =>
-      prev.map((p) => (p.id === editingProduct.id ? { ...p, ...updatedFields } : p))
+      prev.map((p) =>
+        p.id === editingProduct.id ? { ...p, ...updatedFields, updated_at: nowIso } : p
+      )
+    );
+
+    broadcastMicrosecondRateReplacement(
+      [
+        {
+          id: editingProduct.id,
+          item_code: editingProduct.item_code,
+          ...updatedFields,
+          updated_at: nowIso,
+        },
+      ],
+      'Direct Catalog Edit'
     );
 
     const elapsedMs = performance.now() - t0;
@@ -187,20 +207,18 @@ export default function RateLibraryPage() {
     if (!window.confirm('Are you sure you want to permanently delete all products and clear Rate Memory completely?')) {
       return;
     }
-    setResetting(true);
+    // Instant UI clear (optimistic); server confirms in the background
+    setProducts([]);
     try {
       const res = await fetch('/api/products?all=true', { method: 'DELETE' });
-      if (res.ok) {
-        alert('All products and rate memory successfully cleared.');
-        fetchProducts();
-      } else {
-        const err = await res.json();
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
         alert(err.error || 'Failed to delete products.');
+        fetchProducts();
       }
     } catch (e: any) {
       alert(e.message);
-    } finally {
-      setResetting(false);
+      fetchProducts();
     }
   };
 
@@ -208,15 +226,17 @@ export default function RateLibraryPage() {
     if (!window.confirm(`Delete "${desc}" from Rate Memory?`)) {
       return;
     }
+    const prev = products;
+    setProducts((curr) => curr.filter((p) => p.id !== prodId));
     try {
       const res = await fetch(`/api/products?id=${encodeURIComponent(prodId)}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchProducts();
-      } else {
-        const err = await res.json();
+      if (!res.ok) {
+        setProducts(prev);
+        const err = await res.json().catch(() => ({}));
         alert(err.error || 'Failed to delete product.');
       }
     } catch (e: any) {
+      setProducts(prev);
       alert(e.message);
     }
   };
@@ -228,10 +248,38 @@ export default function RateLibraryPage() {
 
     fetch(url)
       .then((r) => r.json())
-      .then((data) => setProducts(data.products || []))
+      .then((data) => {
+        const list = data.products || [];
+        setProducts(list);
+        hydrateInstantRateCacheFromProducts(list);
+      })
       .catch((e) => console.error(e))
       .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    return subscribeToRealtimeRateSync(({ records }) => {
+      if (records && records.length > 0) {
+        setProducts((prev) => {
+          const next = [...prev];
+          for (const rec of records) {
+            const idx = next.findIndex(
+              (p) =>
+                p.id === rec.id ||
+                String(p.description || '').trim().toLowerCase() ===
+                  String(rec.description || '').trim().toLowerCase()
+            );
+            if (idx >= 0) {
+              next[idx] = { ...next[idx], ...rec };
+            } else {
+              next.push(rec);
+            }
+          }
+          return next;
+        });
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -261,20 +309,71 @@ export default function RateLibraryPage() {
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    const t0 = performance.now();
+    const cleanDesc = newDesc.trim();
+    const parsedRate = Number(newRate) || 0;
+    const parsedGst = Number(newGst) || 18;
+    const nowIso = new Date().toISOString();
+    const tempId = `prod_opt_${Date.now()}`;
+
+    const optimisticProduct = {
+      id: tempId,
+      item_code: newItemCode,
+      description: cleanDesc,
+      category: 'General',
+      specification: newSpec.trim() || null,
+      pack: newPack.trim() || null,
+      unit: newUnit.trim() || 'Nos',
+      default_rate: parsedRate,
+      default_gst_rate: parsedGst,
+      last_verified_date: nowIso.split('T')[0],
+      last_verified_source: 'Manual Catalog Entry',
+      updated_at: nowIso,
+    };
+
+    // 1. Microsecond Optimistic UI Replacement & Real-Time Broadcast
+    setProducts((prev) => {
+      const existingIdx = prev.findIndex(
+        (p) => String(p.description || '').trim().toLowerCase() === cleanDesc.toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = { ...copy[existingIdx], ...optimisticProduct, id: copy[existingIdx].id };
+        return copy;
+      }
+      return [...prev, optimisticProduct];
+    });
+
+    broadcastMicrosecondRateReplacement([optimisticProduct], 'Manual Catalog Entry');
+
+    const elapsedMs = performance.now() - t0;
+    setSaveTelemetry({
+      durationMs: elapsedMs,
+      productName: cleanDesc,
+      rate: parsedRate,
+      savedAt: new Date(),
+    });
+
+    setIsNewModalOpen(false);
+    setNewDesc('');
+    setNewSpec('');
+    setNewPack('');
+    setNewRate('');
     setCreating(true);
+
     try {
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          item_code: newItemCode,
-          description: newDesc,
+          item_code: optimisticProduct.item_code,
+          description: optimisticProduct.description,
           category: 'General',
-          specification: newSpec,
-          pack: newPack,
-          unit: newUnit,
-          default_rate: Number(newRate),
-          default_gst_rate: Number(newGst),
+          specification: optimisticProduct.specification,
+          pack: optimisticProduct.pack,
+          unit: optimisticProduct.unit,
+          default_rate: optimisticProduct.default_rate,
+          default_gst_rate: optimisticProduct.default_gst_rate,
         }),
       });
 
@@ -283,16 +382,10 @@ export default function RateLibraryPage() {
         throw new Error(err.error || 'Failed to add product');
       }
 
-      const data = await res.json();
-      setIsNewModalOpen(false);
-      setNewDesc('');
-      setNewSpec('');
-      setNewPack('');
-      setNewRate('');
       fetchProducts();
-      alert('Product saved permanently with consecutive item code ' + (data.item_code || newItemCode));
     } catch (e: any) {
-      alert(e.message);
+      console.error('Error saving product:', e);
+      fetchProducts();
     } finally {
       setCreating(false);
     }

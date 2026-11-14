@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { AppSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
-import { getActiveTabSession } from '@/lib/auth/client-context';
+import { getActiveTabSession, setActiveTabSession } from '@/lib/auth/client-context';
 import { ProfilePhotoSetterModal } from '@/components/ProfilePhotoSetterModal';
 import {
   Building2,
@@ -37,6 +37,11 @@ import {
   Database,
   Check,
   Camera,
+  User,
+  UserPlus,
+  Eye,
+  EyeOff,
+  ChevronDown,
 } from 'lucide-react';
 
 function formatDateTime(isoString: string | null | undefined): string {
@@ -81,6 +86,19 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [openSections, setOpenSections] = useState<{
+    admin: boolean;
+    employees: boolean;
+    supplier: boolean;
+  }>({
+    admin: true,
+    employees: true,
+    supplier: true,
+  });
+
+  const toggleSection = (key: 'admin' | 'employees' | 'supplier') => {
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   // User, Employee Directory and Progress Modal State
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -112,6 +130,117 @@ export default function SettingsPage() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // Add Employee Modal State
+  const [addEmployeeModalOpen, setAddEmployeeModalOpen] = useState(false);
+  const [newEmpName, setNewEmpName] = useState('');
+  const [newEmpPhone, setNewEmpPhone] = useState('');
+  const [newEmpGmail, setNewEmpGmail] = useState('');
+  const [newEmpPassword, setNewEmpPassword] = useState('');
+  const [newEmpRole, setNewEmpRole] = useState<'staff' | 'admin'>('staff');
+  const [showNewEmpPassword, setShowNewEmpPassword] = useState(false);
+  const [addEmployeeLoading, setAddEmployeeLoading] = useState(false);
+  const [addEmployeeError, setAddEmployeeError] = useState('');
+
+  const handleAddEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddEmployeeError('');
+    setAddEmployeeLoading(true);
+
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newEmpName.trim(),
+          contact: newEmpPhone.trim(),
+          phnumber: newEmpPhone.trim(),
+          email: newEmpGmail.trim(),
+          gmail: newEmpGmail.trim(),
+          password: newEmpPassword,
+          role: newEmpRole,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to add employee account.');
+      }
+
+      setAddEmployeeModalOpen(false);
+      const addedName = newEmpName.trim();
+      setNewEmpName('');
+      setNewEmpPhone('');
+      setNewEmpGmail('');
+      setNewEmpPassword('');
+      setNewEmpRole('staff');
+
+      await loadEmployees(false);
+      setActionMsg(`Employee "${addedName}" added successfully! They can log in immediately using either their Gmail or Phone Number.`);
+      setTimeout(() => setActionMsg(''), 5000);
+    } catch (err: any) {
+      setAddEmployeeError(err.message || 'Failed to add employee. Please check details.');
+    } finally {
+      setAddEmployeeLoading(false);
+    }
+  };
+
+  // Edit Employee Modal State (Admin Only)
+  const [editingEmployee, setEditingEmployee] = useState<any | null>(null);
+  const [editEmpName, setEditEmpName] = useState('');
+  const [editEmpPhone, setEditEmpPhone] = useState('');
+  const [editEmpGmail, setEditEmpGmail] = useState('');
+  const [editEmpPassword, setEditEmpPassword] = useState('');
+  const [editEmpRole, setEditEmpRole] = useState<'staff' | 'admin'>('staff');
+  const [showEditEmpPassword, setShowEditEmpPassword] = useState(false);
+  const [editEmployeeLoading, setEditEmployeeLoading] = useState(false);
+  const [editEmployeeError, setEditEmployeeError] = useState('');
+
+  const openEditEmployeeModal = (emp: any) => {
+    setEditingEmployee(emp);
+    setEditEmpName(emp.name || '');
+    setEditEmpPhone(emp.contact || '');
+    setEditEmpGmail(emp.email || '');
+    setEditEmpPassword('');
+    setEditEmpRole(emp.role === 'admin' ? 'admin' : 'staff');
+    setShowEditEmpPassword(false);
+    setEditEmployeeError('');
+  };
+
+  const handleEditEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee) return;
+    setEditEmployeeError('');
+    setEditEmployeeLoading(true);
+    try {
+      const payload: any = {
+        userId: editingEmployee.id,
+        name: editEmpName.trim(),
+        contact: editEmpPhone.trim(),
+        email: editEmpGmail.trim(),
+        role: editEmpRole,
+      };
+      if (editEmpPassword.trim().length > 0) {
+        payload.password = editEmpPassword;
+      }
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update employee.');
+      const savedName = editEmpName.trim();
+      setEditingEmployee(null);
+      await loadEmployees(false);
+      setActionMsg(`Employee "${savedName}" updated successfully!`);
+      setTimeout(() => setActionMsg(''), 4000);
+    } catch (err: any) {
+      setEditEmployeeError(err.message || 'Failed to update employee.');
+    } finally {
+      setEditEmployeeLoading(false);
+    }
+  };
 
   // Sync Verification State
   const [syncStatus, setSyncStatus] = useState<any | null>(null);
@@ -162,6 +291,12 @@ export default function SettingsPage() {
       .then((data) => {
         if (data.authenticated && data.user) {
           setCurrentUser(data.user);
+          if (data.token) {
+            const current = getActiveTabSession();
+            if (current && (!current.token || current.token.length > 1024)) {
+              setActiveTabSession({ ...current, token: data.token, user: data.user });
+            }
+          }
           if (data.user.avatarUrl || data.user.picture) {
             setAdminAvatarUrl(data.user.avatarUrl || data.user.picture);
           }
@@ -215,11 +350,13 @@ export default function SettingsPage() {
     loadEmployees(false);
     loadSyncStatus(false);
 
-    // Periodic polling every 3.5s for real-time multi-user syncing (silent in background, zero flickers)
+    // Periodic polling every 15s when visible for smooth zero-lag navigation
     const pollTimer = setInterval(() => {
-      loadEmployees(true);
-      loadSyncStatus(true);
-    }, 3500);
+      if (document.visibilityState === 'visible') {
+        loadEmployees(true);
+        loadSyncStatus(true);
+      }
+    }, 15000);
 
     const handleTabActive = () => {
       if (document.visibilityState === 'visible') {
@@ -488,14 +625,25 @@ export default function SettingsPage() {
                       <RefreshCw className="w-4 h-4 text-blue-600" />
                       <span>Rates Synced with Employee Portal</span>
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleSection('admin')}
+                      aria-expanded={openSections.admin}
+                      title={openSections.admin ? 'Collapse section' : 'Expand section'}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100/90 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                    >
+                      <span>{openSections.admin ? 'Hide' : 'Show'}</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${openSections.admin ? 'rotate-180' : ''}`} />
+                    </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                {openSections.admin && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 animate-in fade-in duration-150">
                   {/* Card 1: Administrator Email */}
-                  <div className="p-5 rounded-2xl bg-slate-50/80 backdrop-blur-xs border border-slate-200/70 space-y-1.5">
+                  <div className="p-5 rounded-2xl bg-slate-50/80 backdrop-blur-xs border border-slate-200/70 space-y-1.5 min-w-0">
                     <span className="text-slate-500 block font-bold text-[11pt] uppercase tracking-wide">Administrator Email</span>
-                    <span className="font-bold text-slate-900 font-calibri text-[11pt] block truncate tracking-wide">
+                    <span className="font-bold text-slate-900 font-calibri text-[11pt] block truncate break-all tracking-wide" title="jeevanpranavagencies@gmail.com">
                       jeevanpranavagencies@gmail.com
                     </span>
                     <span className="text-[10.5pt] text-slate-500 block tracking-wide">Master login account</span>
@@ -558,48 +706,97 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 </div>
+                )}
               </div>
 
               {/* =========================================================================
-                  2. VISION NEW SIGN-INS & REGISTERED EMPLOYEES DIRECTORY (EXPANDED WHITE GLASSMORPHISM)
+                  2. VISION NEW SIGN-INS & REGISTERED EMPLOYEES DIRECTORY (Moved to dedicated /settings/employees page)
                   ========================================================================= */}
-              <div className="relative overflow-hidden rounded-3xl bg-white/90 backdrop-blur-md p-7 sm:p-9 border border-white/80 shadow-[0_12px_40px_rgb(0,0,0,0.05)] ring-1 ring-slate-200/70 space-y-7">
+              {false && (
+              <div className="relative overflow-hidden rounded-3xl bg-white/90 backdrop-blur-md p-5 sm:p-7 md:p-9 border border-white/80 shadow-[0_12px_40px_rgb(0,0,0,0.05)] ring-1 ring-slate-200/70 space-y-7">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                   <div>
                     <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-blue-600/10 text-blue-600 flex items-center justify-center border border-blue-200/60 shadow-2xs">
+                      <div className="w-11 h-11 rounded-2xl bg-blue-600/10 text-blue-600 flex items-center justify-center border border-blue-200/60 shadow-2xs shrink-0">
                         <Users className="w-6 h-6" />
                       </div>
-                      <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-wide">
-                        Registered Employees & Recent Sign-Ins
-                      </h2>
+                      <a
+                        href="/settings/employees"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group/emp-title inline-flex items-center gap-2 text-xl sm:text-2xl font-bold text-slate-900 hover:text-blue-700 tracking-wide transition-colors"
+                        title="Open Registered Employees & Full Details in New Tab"
+                      >
+                        <span>Registered Employees & Recent Sign-Ins</span>
+                        <ExternalLink className="w-4 h-4 text-blue-600 opacity-70 group-hover/emp-title:opacity-100 transition-opacity" />
+                      </a>
                     </div>
-                    <p className="text-[11.5pt] text-slate-600 mt-1.5 tracking-wide">
+                    <p className="text-[11pt] sm:text-[11.5pt] text-slate-600 mt-1.5 tracking-wide">
                       Monitor employee credentials, real-time sign-in timestamps, last recorded activities, and quotation progress.
                     </p>
                   </div>
 
-                  {/* High-level brief aggregate summary pills in frosted glass */}
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="px-4 py-2 rounded-xl bg-slate-100/80 backdrop-blur-xs border border-white text-slate-700 text-[11pt] font-semibold flex items-center gap-2 shadow-2xs tracking-wide whitespace-nowrap">
+                  {/* Header Actions: Summary Pills + Add Employee Button + Refresh */}
+                  <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                    <div className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-slate-100/80 backdrop-blur-xs border border-white text-slate-700 text-[10.5pt] sm:text-[11pt] font-semibold flex items-center gap-2 shadow-2xs tracking-wide whitespace-nowrap">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                       <span>{totalStaffCount} {totalStaffCount === 1 ? 'Registered Staff' : 'Registered Staff'}</span>
                     </div>
-                    <div className="px-4 py-2 rounded-xl bg-blue-50/90 backdrop-blur-xs border border-blue-100 text-blue-800 text-[11pt] font-semibold shadow-2xs tracking-wide whitespace-nowrap">
+                    <div className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-50/90 backdrop-blur-xs border border-blue-100 text-blue-800 text-[10.5pt] sm:text-[11pt] font-semibold shadow-2xs tracking-wide whitespace-nowrap">
                       <span>{totalStaffQuotes} {totalStaffQuotes === 1 ? 'Quote' : 'Quotes'} (₹{Number(totalStaffPipeline).toLocaleString('en-IN', { maximumFractionDigits: 0 })})</span>
                     </div>
+
+                    {/* NEW: Dedicated Employee & Quotation Vision Page Link (Opens in New Tab) */}
+                    <a
+                      href="/settings/employees"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10.5pt] sm:text-[11pt] shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95 tracking-wide whitespace-nowrap"
+                      title="Open Dedicated Employee Portal & Full Quotation Vision in New Tab"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Open Employees Tab</span>
+                    </a>
+
+                    {/* NEW: Add Employee Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddEmployeeError('');
+                        setAddEmployeeModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10.5pt] sm:text-[11pt] shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-95 tracking-wide whitespace-nowrap"
+                      title="Add New Employee (Name, Phnumber, Gmail, Password)"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>Add Employee</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => loadEmployees(false)}
                       disabled={loadingEmployees}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/95 hover:bg-white border border-slate-200/80 text-slate-700 font-bold text-[11pt] shadow-2xs transition-all cursor-pointer active:scale-95 disabled:opacity-50 tracking-wide whitespace-nowrap"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl bg-white/95 hover:bg-white border border-slate-200/80 text-slate-700 font-bold text-[10.5pt] sm:text-[11pt] shadow-2xs transition-all cursor-pointer active:scale-95 disabled:opacity-50 tracking-wide whitespace-nowrap"
                       title="Refresh employee sign-in list"
                     >
                       <RefreshCw className={`w-4 h-4 text-slate-500 ${loadingEmployees ? 'animate-spin' : ''}`} />
                       <span>Refresh</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleSection('employees')}
+                      aria-expanded={openSections.employees}
+                      title={openSections.employees ? 'Collapse section' : 'Expand section'}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100/90 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${openSections.employees ? 'rotate-180' : ''}`} />
+                    </button>
                   </div>
                 </div>
+
+                {openSections.employees && (
+                <>
 
                 {loadingEmployees && employees.length === 0 ? (
                   <div className="p-12 text-center flex flex-col items-center justify-center">
@@ -608,7 +805,7 @@ export default function SettingsPage() {
                   </div>
                 ) : employees.length === 0 ? (
                   <div className="p-12 text-center text-slate-500 text-[11pt] border border-dashed border-slate-200 rounded-3xl bg-white/50 backdrop-blur-xs tracking-wide">
-                    No additional employees registered yet. When staff members create accounts on the sign-in page, they will appear here.
+                    No additional employees registered yet. Click &quot;Add Employee&quot; above to create employee credentials, or staff can register on the sign-in page.
                   </div>
                 ) : (
                   <>
@@ -616,7 +813,7 @@ export default function SettingsPage() {
                         DESKTOP TABLE VIEW (Fluid Proportional Widths, Zero Horizontal Clipping)
                         ========================================================================= */}
                     <div className="hidden lg:block overflow-x-auto rounded-2xl border border-slate-200/80 bg-white/80 backdrop-blur-xs shadow-xs">
-                      <table className="w-full text-left font-sans table-auto">
+                      <table className="w-full min-w-[960px] text-left font-sans table-auto">
                         <thead className="bg-slate-100/90 backdrop-blur-xs text-slate-700 border-b border-slate-200/80 text-[11pt] font-bold tracking-[0.05em] uppercase">
                           <tr>
                             <th className="px-4 py-4 w-[24%]">Employee Name</th>
@@ -757,6 +954,15 @@ export default function SettingsPage() {
 
                                     <button
                                       type="button"
+                                      onClick={() => openEditEmployeeModal(emp)}
+                                      className="p-1.5 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50/90 border border-transparent hover:border-blue-200 transition-colors cursor-pointer shrink-0"
+                                      title={`Edit ${emp.name}'s details`}
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+
+                                    <button
+                                      type="button"
                                       onClick={() => handleRoleToggle(emp.id, emp.role)}
                                       className="p-1.5 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-white/90 border border-transparent hover:border-slate-200 transition-colors cursor-pointer shrink-0"
                                       title={isStaff ? 'Promote to Administrator' : 'Demote to Employee'}
@@ -843,9 +1049,9 @@ export default function SettingsPage() {
                                 <Phone className="w-4 h-4 text-slate-400 shrink-0" />
                                 <span>{emp.contact || 'No phone recorded'}</span>
                               </div>
-                              <div className="flex items-center gap-2 text-slate-700 truncate" title={emp.email}>
+                              <div className="flex items-center gap-2 text-slate-700 min-w-0" title={emp.email}>
                                 <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                                <span className="truncate">{emp.email}</span>
+                                <span className="truncate break-all">{emp.email}</span>
                               </div>
                             </div>
 
@@ -871,49 +1077,60 @@ export default function SettingsPage() {
                             </div>
 
                             {/* Action Buttons Row */}
-                            <div className="flex items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
+                            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-2.5 pt-2 border-t border-slate-100">
                               <button
                                 type="button"
                                 onClick={() => setSelectedEmployee(emp)}
-                                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11pt] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs active:scale-95 transition-all cursor-pointer"
+                                className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-[10.5pt] sm:text-[11pt] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs active:scale-95 transition-all cursor-pointer whitespace-nowrap"
                               >
                                 <TrendingUp className="w-4 h-4" />
                                 <span>Vision Progress</span>
                               </button>
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPhotoModalTarget({
-                                    id: emp.id,
-                                    name: emp.name,
-                                    role: emp.role === 'staff' ? 'Employee' : 'Administrator',
-                                    avatarUrl: emp.avatar_url || null,
-                                  })
-                                }
-                                className="p-2.5 rounded-xl text-slate-600 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 border border-slate-200 transition-colors cursor-pointer"
-                                title={`Set Profile Photo for ${emp.name}`}
-                              >
-                                <Camera className="w-5 h-5" />
-                              </button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPhotoModalTarget({
+                                      id: emp.id,
+                                      name: emp.name,
+                                      role: emp.role === 'staff' ? 'Employee' : 'Administrator',
+                                      avatarUrl: emp.avatar_url || null,
+                                    })
+                                  }
+                                  className="p-2 sm:p-2.5 rounded-xl text-slate-600 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 border border-slate-200 transition-colors cursor-pointer"
+                                  title={`Set Profile Photo for ${emp.name}`}
+                                >
+                                  <Camera className="w-4.5 h-4.5" />
+                                </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleRoleToggle(emp.id, emp.role)}
-                                className="p-2.5 rounded-xl text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer"
-                                title={isStaff ? 'Promote to Administrator' : 'Demote to Employee'}
-                              >
-                                <UserCog className="w-5 h-5" />
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditEmployeeModal(emp)}
+                                  className="p-2 sm:p-2.5 rounded-xl text-slate-600 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 border border-slate-200 transition-colors cursor-pointer"
+                                  title={`Edit ${emp.name}'s details`}
+                                >
+                                  <Pencil className="w-4.5 h-4.5" />
+                                </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteEmployee(emp.id, emp.name)}
-                                className="p-2.5 rounded-xl text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
-                                title="Delete Employee Account"
-                              >
-                                <Trash2 className="w-5 h-5" />
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRoleToggle(emp.id, emp.role)}
+                                  className="p-2 sm:p-2.5 rounded-xl text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer"
+                                  title={isStaff ? 'Promote to Administrator' : 'Demote to Employee'}
+                                >
+                                  <UserCog className="w-4.5 h-4.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteEmployee(emp.id, emp.name)}
+                                  className="p-2 sm:p-2.5 rounded-xl text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
+                                  title="Delete Employee Account"
+                                >
+                                  <Trash2 className="w-4.5 h-4.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -921,7 +1138,10 @@ export default function SettingsPage() {
                     </div>
                   </>
                 )}
+                </>
+                )}
               </div>
+              )}
 
               {/* =========================================================================
                   EMPLOYEE ACTIVITY & PROGRESS MODAL (Opaque Solid Background, No Blur, Viewport-Constrained)
@@ -938,8 +1158,8 @@ export default function SettingsPage() {
                 >
                   <div className="w-full max-w-5xl max-h-[88vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in zoom-in-95 duration-150">
                     {/* Modal Header */}
-                    <div className="p-5 sm:p-6 border-b border-slate-200 bg-slate-50 flex items-start justify-between">
-                      <div className="flex items-center gap-4">
+                    <div className="p-4 sm:p-6 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                      <div className="flex items-center gap-4 min-w-0">
                         <button
                           type="button"
                           onClick={() =>
@@ -962,12 +1182,12 @@ export default function SettingsPage() {
                             <Camera className="w-4 h-4 text-white" />
                           </div>
                         </button>
-                        <div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <h3 id="vision-modal-title" className="text-xl font-bold text-slate-900 tracking-wide">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                            <h3 id="vision-modal-title" className="text-lg sm:text-xl font-bold text-slate-900 tracking-wide truncate">
                               {selectedEmployee.name}
                             </h3>
-                            <span className="text-[10.5pt] font-bold px-3 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-wide">
+                            <span className="text-[10pt] sm:text-[10.5pt] font-bold px-2.5 sm:px-3 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-wide">
                               {selectedEmployee.role === 'staff' ? 'Employee' : 'Administrator'}
                             </span>
                             <button
@@ -980,46 +1200,65 @@ export default function SettingsPage() {
                                   avatarUrl: selectedEmployee.avatar_url || null,
                                 })
                               }
-                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 text-[10pt] font-semibold transition-colors cursor-pointer shadow-2xs"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 text-[9.5pt] sm:text-[10pt] font-semibold transition-colors cursor-pointer shadow-2xs"
                               title="Set or change profile photo"
                             >
                               <Camera className="w-3 h-3 text-blue-600" />
                               <span>Set Photo</span>
                             </button>
                           </div>
-                          <div className="flex flex-wrap items-center gap-4 text-[11pt] text-slate-600 mt-1.5 font-calibri">
-                            <span className="flex items-center gap-1.5 text-slate-800">
-                              <Mail className="w-4 h-4 text-slate-500" />
-                              {selectedEmployee.email}
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-[10.5pt] sm:text-[11pt] text-slate-600 mt-1.5 font-calibri">
+                            <span className="flex items-center gap-1.5 text-slate-800 truncate">
+                              <Mail className="w-4 h-4 text-slate-500 shrink-0" />
+                              <span className="truncate">{selectedEmployee.email}</span>
                             </span>
                             {selectedEmployee.contact && (
                               <span className="flex items-center gap-1.5 text-slate-800">
-                                <Phone className="w-4 h-4 text-slate-500" />
-                                {selectedEmployee.contact}
+                                <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+                                <span>{selectedEmployee.contact}</span>
                               </span>
                             )}
                             <span className="flex items-center gap-1.5 text-slate-700 font-semibold">
-                              <Clock className="w-4 h-4 text-blue-600" />
+                              <Clock className="w-4 h-4 text-blue-600 shrink-0" />
                               Last Sign-In: {formatDateTime(selectedEmployee.last_sign_in_at)}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Prominent, Easy-to-Use Close Button */}
-                      <button
-                        type="button"
-                        onClick={() => setSelectedEmployee(null)}
-                        className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-[11pt] flex items-center gap-2 border border-slate-300 transition-colors cursor-pointer shadow-2xs"
-                        aria-label="Close Vision Panel"
-                      >
-                        <X className="w-4 h-4" />
-                        <span>Close</span>
-                      </button>
+                      {/* Prominent, Easy-to-Use Action & Close Buttons */}
+                      <div className="flex flex-wrap items-center gap-2 self-end sm:self-start shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEditEmployeeModal(selectedEmployee)}
+                          className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white hover:bg-blue-50 text-blue-700 font-bold text-[10.5pt] flex items-center gap-1.5 border border-blue-200 transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>Edit Employee</span>
+                        </button>
+                        <a
+                          href={`/settings/employees?emp=${selectedEmployee.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10.5pt] flex items-center gap-1.5 transition-colors shadow-2xs"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Full Quotation Vision</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEmployee(null)}
+                          className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-[10.5pt] sm:text-[11pt] flex items-center gap-1.5 border border-slate-300 transition-colors cursor-pointer shadow-2xs shrink-0"
+                          aria-label="Close Vision Panel"
+                        >
+                          <X className="w-4 h-4" />
+                          <span>Close</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Progress Metrics Overview Cards with Non-Misleading Labels */}
-                    <div className="p-5 sm:p-6 border-b border-slate-200 bg-white grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="p-4 sm:p-6 border-b border-slate-200 bg-white grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                       <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200/80 space-y-1">
                         <span className="text-[11pt] font-bold text-blue-800 block tracking-wide">Total Quotations</span>
                         <div className="text-2xl font-bold text-slate-900 font-calibri">
@@ -1255,14 +1494,14 @@ export default function SettingsPage() {
                   ========================================================================= */}
               {passwordModalOpen && (
                 <div
-                  className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 overflow-y-auto"
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md overflow-y-auto mac-modal-backdrop"
                   role="dialog"
                   aria-modal="true"
                   onClick={(e) => {
                     if (e.target === e.currentTarget) setPasswordModalOpen(false);
                   }}
                 >
-                  <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
+                  <div className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/80 mac-modal-content overflow-hidden ring-1 ring-slate-900/5">
                     <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
@@ -1360,6 +1599,354 @@ export default function SettingsPage() {
               )}
 
               {/* =========================================================================
+                  ADD EMPLOYEE MODAL (Responsive, Secure & Interlinked with Sign In / Sign Up)
+                  ========================================================================= */}
+              {addEmployeeModalOpen && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/50 backdrop-blur-md overflow-y-auto mac-modal-backdrop"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="add-employee-title"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) setAddEmployeeModalOpen(false);
+                  }}
+                >
+                  <div className="w-full max-w-lg bg-white/95 backdrop-blur-xl rounded-3xl mac-modal-content border border-white/80 shadow-[0_25px_70px_rgba(15,23,42,0.3)] overflow-hidden my-auto ring-1 ring-slate-900/5">
+                    {/* Modal Header */}
+                    <div className="p-5 sm:p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                          <UserPlus className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 id="add-employee-title" className="text-base sm:text-lg font-bold text-slate-900">
+                            Add New Employee
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            Required fields: Name, Phnumber, Gmail, Password
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAddEmployeeModalOpen(false)}
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 cursor-pointer transition-colors"
+                        aria-label="Close modal"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleAddEmployee} className="p-5 sm:p-6 space-y-4">
+                      {addEmployeeError && (
+                        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-start gap-2 animate-in fade-in">
+                          <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed">{addEmployeeError}</span>
+                        </div>
+                      )}
+
+                      {/* Required Field 1: Name */}
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Name (Full Name) *
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <User className="w-4 h-4" />
+                          </div>
+                          <input
+                            type="text"
+                            required
+                            value={newEmpName}
+                            onChange={(e) => setNewEmpName(e.target.value)}
+                            placeholder="e.g. R Senthil Kumar"
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Required Field 2: Phnumber (Phone Number) */}
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Phnumber (Phone Number) *
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Phone className="w-4 h-4 text-emerald-600" />
+                          </div>
+                          <input
+                            type="tel"
+                            required
+                            value={newEmpPhone}
+                            onChange={(e) => setNewEmpPhone(e.target.value)}
+                            placeholder="e.g. 9790600971 or +91 9790600971"
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 font-mono text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                          />
+                        </div>
+                        <span className="text-[10.5px] text-slate-500 mt-1 block">
+                          Used for login: employee can enter this phone number on the Sign In screen
+                        </span>
+                      </div>
+
+                      {/* Required Field 3: Gmail */}
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Gmail (Email Address) *
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Mail className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <input
+                            type="email"
+                            required
+                            value={newEmpGmail}
+                            onChange={(e) => setNewEmpGmail(e.target.value)}
+                            placeholder="e.g. senthil.jpa@gmail.com"
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                          />
+                        </div>
+                        <span className="text-[10.5px] text-slate-500 mt-1 block">
+                          Used for login: employee can enter this Gmail on the Sign In screen
+                        </span>
+                      </div>
+
+                      {/* Required Field 4: Password */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px]">
+                            Password *
+                          </label>
+                          <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Bcrypt Salted Encryption</span>
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Lock className="w-4 h-4 text-slate-400" />
+                          </div>
+                          <input
+                            type={showNewEmpPassword ? 'text' : 'password'}
+                            required
+                            minLength={6}
+                            value={newEmpPassword}
+                            onChange={(e) => setNewEmpPassword(e.target.value)}
+                            placeholder="Minimum 6 characters"
+                            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all placeholder:text-slate-400"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewEmpPassword(!showNewEmpPassword)}
+                            tabIndex={-1}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                            title={showNewEmpPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showNewEmpPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Role Assignment */}
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Role Assignment
+                        </label>
+                        <select
+                          value={newEmpRole}
+                          onChange={(e) => setNewEmpRole(e.target.value as 'staff' | 'admin')}
+                          className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all cursor-pointer"
+                        >
+                          <option value="staff">Employee / Staff (Write Quotes & Access Rate Library)</option>
+                          <option value="admin">Administrator (Full Admin Access & Directory)</option>
+                        </select>
+                      </div>
+
+                      {/* Interlinked Login Info */}
+                      <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200/80 text-[11px] text-blue-900 space-y-1">
+                        <div className="font-bold flex items-center gap-1.5 text-blue-950">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Interlinked Login Access</span>
+                        </div>
+                        <p className="text-blue-800 leading-relaxed">
+                          The employee can access and log in using <strong>either their Phone Number OR Gmail Address</strong> together with this password.
+                        </p>
+                      </div>
+
+                      {/* Modal Actions */}
+                      <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setAddEmployeeModalOpen(false)}
+                          className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={addEmployeeLoading}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-60 active:scale-95"
+                        >
+                          {addEmployeeLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Adding Employee...</span>
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="w-4 h-4" />
+                              <span>Add Employee</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================================
+                  EDIT EMPLOYEE MODAL (Admin Only - Name, Phnumber, Gmail, Password, Role)
+                  ========================================================================= */}
+              {editingEmployee && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/50 backdrop-blur-md overflow-y-auto mac-modal-backdrop"
+                  role="dialog"
+                  aria-modal="true"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) setEditingEmployee(null);
+                  }}
+                >
+                  <div className="w-full max-w-lg bg-white/95 backdrop-blur-xl rounded-3xl mac-modal-content border border-white/80 shadow-[0_25px_70px_rgba(15,23,42,0.3)] overflow-hidden my-auto ring-1 ring-slate-900/5">
+                    <div className="p-5 sm:p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                          <Pencil className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                            Edit Registered Employee
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            Admin Control: Update Name, Phnumber, Gmail, Password or Role
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingEmployee(null)}
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 cursor-pointer"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleEditEmployee} className="p-5 sm:p-6 space-y-4">
+                      {editEmployeeError && (
+                        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-start gap-2">
+                          <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <span>{editEmployeeError}</span>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Name (Full Name) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editEmpName}
+                          onChange={(e) => setEditEmpName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Phnumber (Phone Number) *
+                        </label>
+                        <input
+                          type="tel"
+                          required
+                          value={editEmpPhone}
+                          onChange={(e) => setEditEmpPhone(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Gmail Address *
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={editEmpGmail}
+                          onChange={(e) => setEditEmpGmail(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Reset Password (leave blank to keep current)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showEditEmpPassword ? 'text' : 'password'}
+                            value={editEmpPassword}
+                            onChange={(e) => setEditEmpPassword(e.target.value)}
+                            placeholder="Optional: minimum 6 characters"
+                            className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEditEmpPassword(!showEditEmpPassword)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showEditEmpPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 uppercase tracking-wide text-[11px] mb-1.5">
+                          Role Assignment
+                        </label>
+                        <select
+                          value={editEmpRole}
+                          onChange={(e) => setEditEmpRole(e.target.value as 'staff' | 'admin')}
+                          className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm cursor-pointer"
+                        >
+                          <option value="staff">Employee / Staff</option>
+                          <option value="admin">Administrator</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setEditingEmployee(null)}
+                          className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold text-xs cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={editEmployeeLoading}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer disabled:opacity-60 active:scale-95"
+                        >
+                          {editEmployeeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                          <span>Save Employee Changes</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* =========================================================================
                   3. VERIFIED SUPPLIER COMPANY PROFILE (WHITE GLASSMORPHISM)
                   ========================================================================= */}
               <div className="rounded-3xl bg-white/90 backdrop-blur-md p-7 sm:p-9 border border-white/80 shadow-[0_12px_40px_rgb(0,0,0,0.05)] ring-1 ring-slate-200/70 space-y-7">
@@ -1374,17 +1961,35 @@ export default function SettingsPage() {
                     </p>
                   </div>
 
-                  {!isEditing && (
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenSections((prev) => ({ ...prev, supplier: true }));
+                          handleStartEdit();
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-[11pt] shadow-2xs transition-all cursor-pointer active:scale-95 tracking-wide whitespace-nowrap"
+                      >
+                        <Pencil className="w-4 h-4 text-blue-600" />
+                        <span>Edit Master Details</span>
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={handleStartEdit}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-[11pt] shadow-2xs transition-all cursor-pointer active:scale-95 tracking-wide whitespace-nowrap"
+                      onClick={() => toggleSection('supplier')}
+                      aria-expanded={openSections.supplier}
+                      title={openSections.supplier ? 'Collapse section' : 'Expand section'}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100/90 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200/80 text-xs font-bold transition-all cursor-pointer active:scale-95"
                     >
-                      <Pencil className="w-4 h-4 text-blue-600" />
-                      <span>Edit Master Details</span>
+                      <span>{openSections.supplier ? 'Hide' : 'Show'}</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${openSections.supplier ? 'rotate-180' : ''}`} />
                     </button>
-                  )}
+                  </div>
                 </div>
+
+                {openSections.supplier && (
+                <>
 
                 {saveSuccess && (
                   <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11pt] flex items-center gap-2.5 shadow-2xs animate-in fade-in tracking-wide">
@@ -1475,18 +2080,18 @@ export default function SettingsPage() {
                           <CreditCard className="w-5 h-5" />
                           <span>Banking & Direct Remittance Details</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 text-[11pt]">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11pt]">
                           <div>
                             <span className="text-slate-500 block text-[10.5pt] tracking-wide">Bank Name:</span>
                             <span className="font-semibold text-slate-800 tracking-wide text-[11.5pt]">{profile.bank_name}</span>
                           </div>
                           <div>
                             <span className="text-slate-500 block text-[10.5pt] tracking-wide">Account Number:</span>
-                            <span className="font-mono font-bold text-slate-900 tracking-wide text-[11.5pt]">{profile.account_no}</span>
+                            <span className="font-mono font-bold text-slate-900 tracking-wide text-[11.5pt] break-all">{profile.account_no}</span>
                           </div>
                           <div>
                             <span className="text-slate-500 block text-[10.5pt] tracking-wide">IFSC Code:</span>
-                            <span className="font-mono font-bold text-slate-900 tracking-wide text-[11.5pt]">{profile.ifsc_code}</span>
+                            <span className="font-mono font-bold text-slate-900 tracking-wide text-[11.5pt] break-all">{profile.ifsc_code}</span>
                           </div>
                           <div>
                             <span className="text-slate-500 block text-[10.5pt] tracking-wide">Branch:</span>
@@ -1709,6 +2314,8 @@ export default function SettingsPage() {
                       </button>
                     </div>
                   </form>
+                )}
+                </>
                 )}
               </div>
 

@@ -1,13 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import { getDb } from '@/lib/db/client';
 import { seedDb } from '@/lib/db/seed';
 import { normalizeCompanyName } from '@/lib/utils/formatters';
 
 export async function GET(req: NextRequest) {
-  await seedDb();
-  const db = getDb();
+  try { await connection(); } catch {}
 
   try {
+    await seedDb();
+    const db = getDb();
     const foldersRes = await db.execute('SELECT * FROM company_folders ORDER BY name ASC');
     const customersRes = await db.execute('SELECT id, company_name, trade_name, store_code, folder_name FROM customers');
 

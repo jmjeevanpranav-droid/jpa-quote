@@ -22,8 +22,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Set up persistent database directory
-RUN mkdir -p /var/data && chmod 777 /var/data
+# Set up persistent database directory writable by any container user (including HF Spaces UID 1000)
+RUN mkdir -p /var/data && chmod -R 777 /var/data /app
 ENV JPA_DATA_DIR=/var/data
 
 COPY --from=builder /app/public ./public
